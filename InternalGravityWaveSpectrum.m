@@ -433,19 +433,17 @@ classdef InternalGravityWaveSpectrum < handle
             subplot(1,3,1)
             plot(sqrt(self.N2zInitial)*3600/(2*pi),self.zInitial ,'k',LineWidth=1.5)
             hold on
-            xline(sqrt(self.N2max)*3600/(2*pi))
+            xline(sqrt(0.8*self.N2max)*3600/(2*pi))
             ylabel('depth')
             xlabel('cph')
             title('N(z)')
 
             subplot(1,3,2)
-            plot(self.FInitial(:,end),self.zInitial ,'k',LineWidth=1.5)
-            ylabel('depth')            
+            plot(self.FInitial(:,end),self.zInitial ,'k',LineWidth=1.5)                      
             title('Initial F - Highest Mode')   
 
             subplot(1,3,3)
-            plot(self.GInitial(:,end),self.zInitial ,'k',LineWidth=1.5)
-            ylabel('depth')            
+            plot(self.GInitial(:,end),self.zInitial ,'k',LineWidth=1.5)                        
             title('Initial G - Highest Mode')   
         end
 
