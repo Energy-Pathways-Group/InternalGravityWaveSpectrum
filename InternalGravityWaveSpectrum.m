@@ -38,11 +38,11 @@ classdef InternalGravityWaveSpectrum < handle
         
             arguments
                 N2 %handle function
-                Lz 
+                Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 64
-                options.nZ (1,1) double =  65              
+                options.nK (1,1) double = 4
+                options.nZ (1,1) double =  5              
             end
 
             
@@ -67,36 +67,30 @@ classdef InternalGravityWaveSpectrum < handle
         % Step 1.2.1: define vertical vector (z) based on Lz
         % and nZ
         
-        if Lz > 0
-            Lz= -Lz;
-        end
+             
+        %Lz = length, positive
 
-        self.Lz=Lz;
-
-        zInitial = linspace(0,Lz,1000);
+        zInitial = linspace(-Lz,0,10001);
         N2zInitial= N2(zInitial);
         N2max = max(N2zInitial);
 
         self.zInitial=zInitial;
         self.N2zInitial=N2zInitial;
         self.N2max=N2max;
-
-        %Unit test: plot the stratification profile that user inputed
-        %Unit test: display N2max and 0.8*N2Max, also show in the same plot
-        
+       
                     
         % Step 1.3: Compute the K associated with max(N2)   
        
-        im = InternalModesSpectral(N2=N2,zIn=[Lz 0],zOut=zInitial,latitude=options.latitude,nModes=options.nModes);       
+        im = InternalModesWKBSpectral(N2=N2,zIn=[-Lz 0],zOut=zInitial,latitude=options.latitude,nModes=options.nModes);       
         
         
         %Unit test: how to test if this modes where computed rigth?
         %Unit test: plot FiK,GiK related with this mode
 
-        [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.8*N2max);
-        Ks= k.*conj(k);
-        Kmax= sqrt(max(Ks));
-        
+        [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.8*sqrt(N2max));
+        %Ks= k.*conj(k); %if its not real, there ia a problem! check h!!!
+        Kmax= max(k);
+
         self.FInitial = FInitial;
         self.GInitial = GInitial;
 
@@ -113,16 +107,16 @@ classdef InternalGravityWaveSpectrum < handle
 
         for iK=1:length(KRadial)    
     
-            im = InternalModesSpectral(N2=N2,zIn=[Lz 0],zOut=zInitial,latitude=options.latitude,nModes=options.nModes);
-            [FThis,GThis,hThis,omegaThis] = im.ModesAtWavenumber(KRadial(iK));
-         
+            im = InternalModesSpectral(N2=N2,zIn=[-Lz 0],zOut=zInitial,latitude=options.latitude,nModes=options.nModes);
+            %[FThis,GThis,hThis,omegaThis] = im.ModesAtWavenumber(KRadial(iK));         
         
             im.normalization = normalization;
             im.upperBoundary = upperBoundary;  
             
+            %zPerMode(:,iK) = im.GaussQuadraturePointsForModesAtWavenumber(options.nModes+1,KRadial(iK));
             zPerMode(:,iK) = im.GaussQuadraturePointsForModesAtWavenumber(options.nModes+1,KRadial(iK));
             
-            im = InternalModesSpectral(N2=N2,zIn=[Lz 0],zOut=zPerMode(:,iK),latitude=options.latitude,nModes=options.nModes);
+            im = InternalModesSpectral(N2=N2,zIn=[-Lz 0],zOut=zPerMode(:,iK),latitude=options.latitude,nModes=options.nModes);
             [FiK(:,:,iK),GiK(:,:,iK),hiK(:,iK),omegaiK(:,iK)] = im.ModesAtWavenumber(KRadial(iK)); %modes at quadrature points and not equally spaced
         
         end
@@ -137,28 +131,20 @@ classdef InternalGravityWaveSpectrum < handle
         % the squared equations (Jeffrey's paper)
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         
-        % Before, I was calculating the energy in a loop and not 
-        % just multiplying a coefficient. How can I create this
-        % matrix of coefficients?
-
-        % The coefficient matrix will have the size [nK, nModes].
-        % Then, maybe I can just repeat the least values in the 
-        % z dimension. The matrix will have repeated values, but 
-        % I think it's still more computationally efficient than 
-        % calculating the energy inside a loop(???)
-
-        
-        % Step 1: Compute coeficients in 2D [nModes,nK]
-
-        % HKEcoef [nModes,nK] = (1/4)*(1+ (f0^2/(omega_j.^2 [nModes,nK])))
-        % HVEcoef [nModes,nK] = (1/4)* (KRadial^2 [nK] .* h_j[nModes,nK])
-
-        % Will the above multiplication work or do I need to do over a
-        % loop?? Or I can also transform KRadial [nK] in a 2D matrix [nModes, nK] 
-
-        % PEcoef [nModes,nK] =  (1/4)* ((KRadial^2 [nK] .*
-        % h_j[nModes,nK])./omega_j[nModes,nK])
-      
+        % 
+        % % Step 1: Compute coeficients in 2D [nModes,nK]
+        % 
+        % HKEcoef = (1/4)*(1+ (f0^2./(omegaiK.^2)));
+        % HVEcoef= (1/4)* (KRadial'.^2 .* h);
+        % 
+        % % Will the above multiplication work or do I need to do over a
+        % % loop?? Or I can also transform KRadial [nK] in a 2D matrix [nModes, nK] 
+        % 
+        % PEcoef =  (1/4)* ((KRadial.^2.*h)./omegaiK);
+        % 
+        % self.HKEcoef=HKEcoef;
+        % self.HVEcoef=HVEcoef;
+        % self.PEcoef=PEcoef;
 
 
         % Step 2: Make the coeficients in 3D [nModes,nK,nZ]
@@ -433,7 +419,7 @@ classdef InternalGravityWaveSpectrum < handle
             subplot(1,3,1)
             plot(sqrt(self.N2zInitial)*3600/(2*pi),self.zInitial ,'k',LineWidth=1.5)
             hold on
-            xline(sqrt(0.8*self.N2max)*3600/(2*pi))
+            xline(0.8*sqrt(self.N2max)*3600/(2*pi))
             ylabel('depth')
             xlabel('cph')
             title('N(z)')
@@ -450,12 +436,41 @@ classdef InternalGravityWaveSpectrum < handle
 
         function checkOrthogonality(self)
             arguments
-                self
-               
+                self               
             end
+
+            figure()
+            subplot(1,3,1)
+            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)            
+            ylabel('depth')            
+            title('G - Mode=2; indK=1')
+
+            subplot(1,3,2)
+            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)            
+            ylabel('depth')            
+            title('G - Mode=3; indK=1')
+
+            subplot(1,3,3)
+            plot((self.G(:,3,2).*self.G(:,2,2)),self.zPerMode(:,2),'k',LineWidth=1.5)            
+            ylabel('depth')            
+            title('GMode=2 times GMode=3; indK=1')
+            
+            delFunc = trapz(self.zPerMode(:,2),self.G(:,2,2).*self.G(:,2,2),1);
+
+            disp(['delFunc= ', num2str(delFunc)])
+
+
+        % indK=1;
+        % 
+
         end
 
-
+        function plotQuadraturePoints(self,Mode)
+            arguments
+                self 
+                Mode (1,1) integral
+            end
+        end
 
     end
 end
