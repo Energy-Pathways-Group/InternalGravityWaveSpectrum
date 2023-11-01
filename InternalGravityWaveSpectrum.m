@@ -4,6 +4,7 @@ classdef InternalGravityWaveSpectrum < handle
         f0 % Coriolis parameter at the above latitude.
         Lz % Depth of the ocean.
         N2 %function_handle
+        g
 
         KRadial    % size(k) = nK
         F  % size(F_k) = [nZ,nModes,nK]
@@ -16,6 +17,8 @@ classdef InternalGravityWaveSpectrum < handle
         GInitial % [nZ,nModes]
         zInitial % [nZ]
         N2zInitial
+        test
+        delFuncAll
 
         nModes, nK, nZ
         
@@ -41,8 +44,8 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 4
-                options.nZ (1,1) double =  5              
+                options.nK (1,1) double = 64
+                options.nZ (1,1) double =  65              
             end
 
             
@@ -51,6 +54,7 @@ classdef InternalGravityWaveSpectrum < handle
             self.nModes=options.nModes;
             self.nK=options.nK;
             self.nZ=options.nZ;
+            self.g=9.80665;
             
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 1: Computation of min and max Kh based on the
@@ -434,34 +438,80 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
 
-        function checkOrthogonality(self)
+        function checkOrthogonalityPlot(self)
             arguments
                 self               
-            end
+            end 
+
+            N2atQuadPoints=self.N2(self.zPerMode(:,2));
+            self.g=9.80665;
 
             figure()
             subplot(1,3,1)
+            suptitle('Orthogonality Check Same Mode')
+
             plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)            
-            ylabel('depth')            
-            title('G - Mode=2; indK=1')
+            ylabel('depth')  
+            ylim([-1000 0])
+            title('G_{j=2}')
 
             subplot(1,3,2)
-            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)            
-            ylabel('depth')            
-            title('G - Mode=3; indK=1')
+            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)         
+            title('G_{j=2}')          
+            ylim([-1000 0])
 
             subplot(1,3,3)
-            plot((self.G(:,3,2).*self.G(:,2,2)),self.zPerMode(:,2),'k',LineWidth=1.5)            
-            ylabel('depth')            
-            title('GMode=2 times GMode=3; indK=1')
+            plot((N2atQuadPoints.*self.G(:,2,2).*self.G(:,2,2)),self.zPerMode(:,2),'k',LineWidth=1.5)           
+            title('N_2G_{j=2}G_{j=2}')
+            ylim([-1000 0])
+          
             
-            delFunc = trapz(self.zPerMode(:,2),self.G(:,2,2).*self.G(:,2,2),1);
+            
+            delFuncSameMode = trapz(self.zPerMode(:,2),N2atQuadPoints.*self.G(:,2,2).*self.G(:,2,2),1);
+            disp(['delFunc= ', num2str(delFuncSameMode/self.g)])
+            
+            figure()
+            subplot(1,3,1)
+            suptitle('Orthogonality Check Diff Mode')
 
-            disp(['delFunc= ', num2str(delFunc)])
+            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)            
+            ylabel('depth')  
+            ylim([-1000 0])
+            title('G_{j=2}')
 
+            subplot(1,3,2)
+            plot(self.G(:,3,2),self.zPerMode(:,2),'k',LineWidth=1.5)         
+            title('G_{j=3}')          
+            ylim([-1000 0])
 
-        % indK=1;
-        % 
+            subplot(1,3,3)
+            plot((N2atQuadPoints.*self.G(:,3,2).*self.G(:,2,2)),self.zPerMode(:,2),'k',LineWidth=1.5)           
+            title('N_2G_{j=2}G_{j=3}')
+            ylim([-1000 0])
+          
+
+            delFuncDiffMode = trapz(self.zPerMode(:,2),N2atQuadPoints.*self.G(:,3,2).*self.G(:,2,2),1);
+            disp(['delFunc= ', num2str(delFuncDiffMode/self.g)])
+        end
+
+        function checkOrthogonalityAllModes(self)
+
+            arguments
+                self               
+            end         
+            
+        
+            N2atQuadPoints=self.N2(self.zPerMode(:,2));
+
+            B=N2atQuadPoints.*self.G(:,:,2);
+         
+            khrao = khatrirao(B.',B.');
+            self.test=khrao';
+
+            self.delFuncAll = trapz(self.zPerMode(:,2),self.test,1)./self.g;
+            
+            % its kind working, I guess, but this way I only test the same
+            % index? Maybe I need Face-splitting product?? Idk
 
         end
 
