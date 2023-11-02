@@ -498,22 +498,33 @@ classdef InternalGravityWaveSpectrum < handle
 
             arguments
                 self               
-            end         
-            
-        
-            N2atQuadPoints=self.N2(self.zPerMode(:,2));
+            end   
 
-            B=N2atQuadPoints.*self.G(:,:,2);
-         
-            khrao = khatrirao(B.',B.');
-            self.test=khrao';
+            for indK=1:length(self.KRadial)
+                disp(indK)    
+                N2atQuadPoints=self.N2(self.zPerMode(:,indK));
+                dz=gradient(self.zPerMode(:,indK));
+    
+                B=N2atQuadPoints.*self.G(:,:,indK).*dz;  
+                BT= transpose(self.G(:,:,indK));
+                
+                self.delFuncAll = (BT*B)./self.g;
 
-            self.delFuncAll = trapz(self.zPerMode(:,2),self.test,1)./self.g;
-            
-            % its kind working, I guess, but this way I only test the same
-            % index? Maybe I need Face-splitting product?? Idk
+                isidentity=@(a,tol) all(abs(a-eye(size(a)))<tol);
 
+                tol=1; %I think this tolerance is too big
+
+                isOrthogonal=isidentity(self.delFuncAll,tol);
+                self.test=isOrthogonal;
+                
+                if sum(isOrthogonal)<self.nModes-1
+                   disp("Vetical structure G is not orthogonal")
+                   return                   
+                end    
+                 disp("Vetical structure G is orthogonal") 
+            end
         end
+
 
         function plotQuadraturePoints(self,Mode)
             arguments
