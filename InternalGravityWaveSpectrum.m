@@ -21,8 +21,10 @@ classdef InternalGravityWaveSpectrum < handle
         delFuncAll
 
         nModes, nK, nZ
+
+        HKEcoef, VKEcoef, PEcoef
         
-        
+        HKEatK, VKEatK, PEatK, TEatK
 
     end
     
@@ -44,7 +46,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 64
+                options.nK (1,1) double = 4
                 options.nZ (1,1) double =  65              
             end
 
@@ -137,28 +139,24 @@ classdef InternalGravityWaveSpectrum < handle
         
         % 
         % % Step 1: Compute coeficients in 2D [nModes,nK]
-        % 
-        % HKEcoef = (1/4)*(1+ (f0^2./(omegaiK.^2)));
-        % HVEcoef= (1/4)* (KRadial'.^2 .* h);
-        % 
-        % % Will the above multiplication work or do I need to do over a
-        % % loop?? Or I can also transform KRadial [nK] in a 2D matrix [nModes, nK] 
-        % 
-        % PEcoef =  (1/4)* ((KRadial.^2.*h)./omegaiK);
-        % 
-        % self.HKEcoef=HKEcoef;
-        % self.HVEcoef=HVEcoef;
-        % self.PEcoef=PEcoef;
-
+         
+        HKEcoef = (1/4)*(1+ (f0^2./(omegaiK.^2)));
+        VKEcoef= (1/4)* (KRadial.^2 .* hiK.^2);        
+        PEcoef =  (1/4)* ((KRadial.^2.*hiK.^2)./omegaiK.^2);
+        
 
         % Step 2: Make the coeficients in 3D [nModes,nK,nZ]
         % (not necessary to create the 3D matriz if using write index on .* )
 
-        % for i = 1:length(z)
-        %     HKEcoef3D(:,:,i)=HKEcoef;
-        %     HVEcoef3D(:,:,i)=HVEcoef;
-        %     PEcoef3D(:,:,i)=PEcoef;
-        % end
+        for i = 1:length(zPerMode)
+             HKEcoef3D(i,:,:)=HKEcoef;
+             VKEcoef3D(i,:,:)=VKEcoef;
+             PEcoef3D(i,:,:)=PEcoef;
+        end
+
+        self.HKEcoef=HKEcoef3D;
+        self.VKEcoef=VKEcoef3D;
+        self.PEcoef=PEcoef3D;
 
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -532,6 +530,57 @@ classdef InternalGravityWaveSpectrum < handle
                 Mode (1,1) integral
             end
         end
+
+        function checkEnergySum(self)
+            arguments
+                self                 
+            end
+
+            N2atQuadPoints=self.N2(self.zPerMode);
+
+            for i = 1:length(self.nModes)
+                N2atQuadPoints3D(:,i,:)=N2atQuadPoints;
+            end
+
+           HKE = self.HKEcoef.*self.F.^2;
+           VKE = self.VKEcoef.*self.G.^2;
+           PE= self.PEcoef.*self.G.^2.*N2atQuadPoints3D;
+
+
+           % Integrating in the vertical and summing over modes
+           % for each K, the vertical grid is different, so I am doing
+           % this computation in a loop, but probably there is a better way
+           
+           
+           for i = 1:self.nK
+                HKEatK(:,i)= trapz(self.zPerMode(:,i),HKE(:,:,i));
+                VKEatK(:,i)= trapz(self.zPerMode(:,i),VKE(:,:,i));
+                PEatK(:,i)= trapz(self.zPerMode(:,i),PE(:,:,i));
+           end
+
+            self.HKEatK =sum(HKEatK);
+            self.VKEatK =sum(VKEatK);
+            self.PEatK =sum(PEatK);
+            self.TEatK = sum(self.h)/2;
+
+            disp(["Total Energy: ",num2str(sum(self.TEatK)), "and the Total " + ...
+                "Energy by summation of Energy pieces is: ", num2str(sum(self.HKEatK+self.VKEatK+self.PEatK))])
+            
+            figure()
+            
+            plot(self.KRadial,self.HKEatK,LineWidth=1.5) 
+            hold on
+            plot(self.KRadial,self.VKEatK,LineWidth=1.5) 
+            plot(self.KRadial,self.PEatK,LineWidth=1.5) 
+            plot(self.KRadial,self.TEatK,LineWidth=1.5) 
+
+            ylabel('Energy')  
+            xlabel("KRadial")
+            legend("HKE","VKE","PE","TE" )
+
+
+        end
+
 
     end
 end
