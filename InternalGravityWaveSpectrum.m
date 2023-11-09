@@ -23,8 +23,12 @@ classdef InternalGravityWaveSpectrum < handle
         nModes, nK, nZ
 
         HKEcoef, VKEcoef, PEcoef
+
+        HKE, VKE, PE
         
         HKEatK, VKEatK, PEatK, TEatK
+
+        A
 
     end
     
@@ -164,58 +168,71 @@ classdef InternalGravityWaveSpectrum < handle
         % with the alternative Internal Wave Spectrum
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-      %   % Should I define the function here or do something apart?
-      %   % for now I will past here and just adapt:
-      % 
-      %   j_star=3;
-      %   slope=1;
-      % 
-      %   % GM Parameters. We will use the same??           
-      %   L_gm = 1.3e3; % thermocline exponential scale, meters
-      %   invT_gm = 5.2e-3; % reference buoyancy frequency, radians/seconds
-      %   E_gm = 6.3e-5; % non-dimensional energy parameter
-      %   E_T = L_gm*L_gm*L_gm*invT_gm*invT_gm*E_gm*GMAmplitude;
-      % 
-      %   % Compute the proper vertical function normalization
-      %   M = (j_star^2 +(1:1024).^2).^((-5/4));
-      %   M_norm = sum(M);
-      % 
-      %   %Create the energy matrix 3D 
-      %   totalEnergy = zeros(length(nK),length(nModes));        
-      % 
-      % 
-      % 
-      %   % Step 4.1: Distributing the energy %%%
-      %   for j=(1:length(nModes)-1)    %I need to think better about the inds here!!!
-      %       %Kh_2D = Kh(:,:,j+1);  
-      % 
-      %       for i=(1:length(kRadial)-1)            
-      % 
-      %           %Defining LR                
-      %           LR= sqrt(g*h(i,j))/f0;
-      % 
-      %           %Defining Bfunc and B_norm
-      %           fun = @(k) (1./(k.^2*LR^2 + 1).^(1*slope))*LR;
-      %           B_norm = integral(fun,kRadial(1),kRadial(end));
-      % 
-      %           % Integrate the energy btw 2 Kh
-      %           E = E_T*(integral(fun,kRadial(i),kRadial(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
-      %           totalEnergy(i,j) = E;     
-      %           clear E
-      % 
-      %       end
-      % 
-      % 
-      % 
-      %   end 
-      %       % Step 4.2: Get APlus AMinus Matrix ???
-      %       % The matrix will have the size [nk, nl, nModes]
-      %       % After here I will need to transform to [nK, nModes, nZ]???
-      %       % I don't think I need this, there must be other way!    
-      % 
-      % 
-      %       A = sqrt((TotalEnergy./self.h)/2);
-      % 
+        % Should I define the function here or do something apart?
+        % for now I will past here and just adapt:
+      
+        j_star=3;
+        slope=1;
+        GMAmplitude =1;
+
+        % GM Parameters. We will use the same??           
+        L_gm = 1.3e3; % thermocline exponential scale, meters
+        invT_gm = 5.2e-3; % reference buoyancy frequency, radians/seconds
+        E_gm = 6.3e-5; % non-dimensional energy parameter
+        E_T = L_gm*L_gm*L_gm*invT_gm*invT_gm*E_gm*GMAmplitude;
+
+        % Compute the proper M normalization
+        M = (j_star^2 +(1:1024).^2).^((-5/4));
+        M_norm = sum(M);
+
+        %Create the energy matrix 2D 
+        totalEnergy = zeros(options.nModes,options.nK);        
+
+
+
+        % Step 4.1: Distributing the energy %%%
+        for j=(1:options.nModes-1)    %I need to think better about the inds here!!!
+
+            for i=(1:length(KRadial)-1)            
+
+                %Defining LR                
+                LR= sqrt(self.g*self.h(j,i))/f0;
+
+                %Defining Bfunc and B_norm
+                fun = @(k) (1./(k.^2*LR^2 + 1).^(1*slope))*LR;
+                B_norm = integral(fun,KRadial(1),KRadial(end));
+
+                % Integrate the energy btw 2 Kh
+                E = E_T*(integral(fun,KRadial(i),KRadial(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
+                totalEnergy(j,i) = E;     
+                clear E
+
+            end               
+
+        end 
+
+        A2D = sqrt((totalEnergy./hiK)/2);
+        
+       for i = 1:length(zPerMode)
+           A(i,:,:)=A2D; 
+       end
+
+       self.A = A;
+
+       N2atQuadPoints=self.N2(self.zPerMode);
+
+       for i = 1:length(self.nModes)
+            N2atQuadPoints3D(:,i,:)=N2atQuadPoints;
+       end 
+
+       HKE = self.A.^2.*self.HKEcoef.*self.F.^2;
+       VKE = self.A.^2.*self.VKEcoef.*self.G.^2;
+       PE= self.A.^2.*self.PEcoef.*self.G.^2.*N2atQuadPoints3D;
+
+       self.HKE=HKE;
+       self.VKE=VKE;
+       self.PE=PE;
+
       end
        
 
@@ -225,17 +242,28 @@ classdef InternalGravityWaveSpectrum < handle
         % Horizontal Kinetic Energy 
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        function E = HKEVariance(self, z, options)
+        function E = (self, z)
             % 
             arguments
                 self
-                z
-                options
+                z               
             end
             
             %Also can call HKEAtHorizontalWavenumber 
+            HKEatzK=sum(self.HKE,3);
 
-            % Step 1: Multiplay G and F by Energy Coeficients and A matrix
+            for i= 1:self.nK
+                HKEatz(:,i)=interp1(self.zPerMode(:,i),HKEatzK(:,i),z);              
+
+            end
+
+            E=sum(HKEatz,2);
+
+            plot(E,z)
+
+
+            
+           
             % Step 2: Sum(?) over K and Nmodes to get HKE by z only
             % Step 3: Interpolate in the z vector that the user inputed
             % Step 4: Return the data ou return an error. Like if the user
@@ -542,41 +570,50 @@ classdef InternalGravityWaveSpectrum < handle
                 N2atQuadPoints3D(:,i,:)=N2atQuadPoints;
             end
 
-           HKE = self.HKEcoef.*self.F.^2;
-           VKE = self.VKEcoef.*self.G.^2;
-           PE= self.PEcoef.*self.G.^2.*N2atQuadPoints3D;
-
-
+  
            % Integrating in the vertical and summing over modes
            % for each K, the vertical grid is different, so I am doing
            % this computation in a loop, but probably there is a better way
            
            
            for i = 1:self.nK
-                HKEatK(:,i)= trapz(self.zPerMode(:,i),HKE(:,:,i));
-                VKEatK(:,i)= trapz(self.zPerMode(:,i),VKE(:,:,i));
-                PEatK(:,i)= trapz(self.zPerMode(:,i),PE(:,:,i));
+                HKEatK(:,i)= trapz(self.zPerMode(:,i),self.HKE(:,:,i));
+                VKEatK(:,i)= trapz(self.zPerMode(:,i),self.VKE(:,:,i));
+                PEatK(:,i)= trapz(self.zPerMode(:,i),self.PE(:,:,i));
            end
 
             self.HKEatK =sum(HKEatK);
             self.VKEatK =sum(VKEatK);
             self.PEatK =sum(PEatK);
-            self.TEatK = sum(self.h)/2;
+            self.TEatK = sum(squeeze(self.A(1,:,:)).^2.*self.h)/2;
 
             disp(["Total Energy: ",num2str(sum(self.TEatK)), "and the Total " + ...
                 "Energy by summation of Energy pieces is: ", num2str(sum(self.HKEatK+self.VKEatK+self.PEatK))])
             
             figure()
             
-            plot(self.KRadial,self.HKEatK,LineWidth=1.5) 
+            plot(log10(self.KRadial),self.HKEatK,LineWidth=1.5) 
             hold on
-            plot(self.KRadial,self.VKEatK,LineWidth=1.5) 
-            plot(self.KRadial,self.PEatK,LineWidth=1.5) 
-            plot(self.KRadial,self.TEatK,LineWidth=1.5) 
+            plot(log10(self.KRadial),self.VKEatK,LineWidth=1.5) 
+            plot(log10(self.KRadial),self.PEatK,LineWidth=1.5) 
+            plot(log10(self.KRadial),self.TEatK,LineWidth=1.5) 
+            xlim([min(log10(self.KRadial)) max(log10(self.KRadial))])
+            %xticks(log10(2*pi./[1e5 1e4 1e3 1e2 1e1]))
 
             ylabel('Energy')  
-            xlabel("KRadial")
+            xlabel("log_{10}(KRadial)")
             legend("HKE","VKE","PE","TE" )
+
+            %%% KRadial needs to be evenly spaced.
+            %%% Kmax related to 80% of the maximum stratification is very large 
+            %%% (1.4 which generates a wavelength of 4m!!). 
+            %%% Equally spacing the vector from 0 to Kmax with 64 generates the following result:
+            
+            %%% L1=inf
+            % L2=473m
+            % All the wavelengths are small. How can this be resolved?
+            % - Decrease Kmax?
+            % - Increase the number of points?
 
 
         end
