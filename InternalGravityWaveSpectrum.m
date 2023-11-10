@@ -50,7 +50,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 4
+                options.nK (1,1) double = 64
                 options.nZ (1,1) double =  65              
             end
 
@@ -61,6 +61,7 @@ classdef InternalGravityWaveSpectrum < handle
             self.nK=options.nK;
             self.nZ=options.nZ;
             self.g=9.80665;
+            self.Lz=Lz;
             
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 1: Computation of min and max Kh based on the
@@ -242,69 +243,140 @@ classdef InternalGravityWaveSpectrum < handle
         % Horizontal Kinetic Energy 
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        function E = (self, z)
-            % 
+        function HKEVariance =  HKEVariance(self,options)
+            %
             arguments
                 self
-                z               
+                options.zVector = linspace(-self.Lz,0,4000) 
+                options.plot logical = true
             end
             
-            %Also can call HKEAtHorizontalWavenumber 
-            HKEatzK=sum(self.HKE,3);
+            %Befome summing over K I need to interpolate to the same z
+            %Vector. This loop is definitely not the best way of doing it            
 
             for i= 1:self.nK
-                HKEatz(:,i)=interp1(self.zPerMode(:,i),HKEatzK(:,i),z);              
-
+                for j=1:self.nModes
+                    HKESamez(:,j,i)=interp1(self.zPerMode(:,i),self.HKE(:,j,i),options.zVector);  
+                end
             end
-
-            E=sum(HKEatz,2);
-
-            plot(E,z)
-
-
             
-           
-            % Step 2: Sum(?) over K and Nmodes to get HKE by z only
-            % Step 3: Interpolate in the z vector that the user inputed
-            % Step 4: Return the data ou return an error. Like if the user
-            % asked for energy in a depth deeper than the local depth.
 
+            %Also can call HKEAtHorizontalWavenumber 
 
+            %Sum over modes and k
+            HKEVariance=sum(sum(HKESamez,3),2);
+
+            %%% plot %%%%
+            if options.plot ==1
+
+                figure(10)
+
+                plot(HKEVariance*100,options.zVector)
+                title("HKE")
+                ylabel("Depth [m]")
+                xlabel("Variance [cm^2/s^2]")
+                grid on
+            else
+            end
         end
 
 
+    
+        %%%%%%%%%%%%%%%
         
-        function E = HKEAtHorizontalWavenumber(self,  z, KRadial, options)
+        function HKEAtHorizontalWavenumber = HKEAtHorizontalWavenumber(self, z, options)
                     % 
             arguments
                 self
-                z
-                KRadial
-                options               
+                z (1,1) double
+                options.KRadial double = self.KRadial
+                options.plot logical = true
+
             end
-           
-            % Step 1: Multiplay G and F by Energy Coeficients and A matrix
-            % Step 2: Sum(?) over Nmodes and select on depth (DO NOT INTEGRATE OVER DEPTH)
-            % Step 3: Interpolate in the kRadial vector that the user inputed
-            % Step 4: Return the data ou return an error. 
+
+
+           %Sum over modes
+           HKEatzK=sum(self.HKE,2);
+
+            % interp the matriz [nz, nK] for the same position on the
+            % vertical (z)
+
+            for i= 1:self.nK
+                HKEatk(i)=interp1(self.zPerMode(:,i),HKEatzK(:,i),z);             
+            end
+
+            %interp on the KRadial vector specified by the user
+
+            HKEAtHorizontalWavenumber= interp1(self.KRadial,HKEatk,options.KRadial);            
+
+            if options.plot ==1
+
+                figure(20)
+
+                plot(options.KRadial, HKEAtHorizontalWavenumber*100)    
+                title("HKE")
+                ylabel("Variance [cm^2/s^2]")
+                xlabel("k [m^{-1}]")
+                grid on
+            else
+            end
+
+             
+
         end
 
 
 
-        function E = HKEAtVerticalMode(self, modeVector, options)
+        %%%%%%%%%%%%%%%
+
+        function HKEAtVerticalMode = HKEAtVerticalMode(self, z, options)
                         % 
             arguments
                 self
-                modeVector
-                options
+                z (1,1) double
+                options.modeVector double = (1:self.nModes)  
+                options.zVector = linspace(-self.Lz,0,4000) 
+                options.plot logical = true
             end
 
-        % Step 1: Multiplay G and F by Energy Coeficients and A matrix
-        % Step 2: Sum(?) over K and integrate over depth
-        % Step 3: Interpolate in the modeVector vector that the user inputed
-        % Step 4: Return the data ou return an error. 
+            %Befome summing over K I need to interpolate to the same z
+            %Vector. This loop is definitely not the best way of doing it            
+
+            for i= 1:self.nK
+                for j=1:self.nModes
+                    HKESamez(:,j,i)=interp1(self.zPerMode(:,i),self.HKE(:,j,i),options.zVector);  
+                end
+            end
+
+            %Sum over K
+            HKEatzMode = squeeze(sum(HKESamez,3));
+
+            %interp at desired depth
+
+            for i= 1:self.nModes
+                HKEatMode(i)=interp1(options.zVector,HKEatzMode(:,i),z);             
+            end
+            
+            HKEAtVerticalMode = HKEatMode;
+
+            if options.plot ==1
+
+                figure(40)
+
+                plot(options.modeVector, HKEAtVerticalMode*100)    
+                title("HKE")
+                ylabel("Variance [cm^2/s^2]")
+                xlabel("k [m^{-1}]")
+                grid on
+            else
+            end     
+       
         end
       
+
+
+
+        %%%%%%%%%%%%%%%
 
         function S = HKEAtFrequencies(self,omega,spectrumType)
             arguments
@@ -445,7 +517,7 @@ classdef InternalGravityWaveSpectrum < handle
                 self                            
             end
 
-            
+            figure(30)
             subplot(1,3,1)
             plot(sqrt(self.N2zInitial)*3600/(2*pi),self.zInitial ,'k',LineWidth=1.5)
             hold on
