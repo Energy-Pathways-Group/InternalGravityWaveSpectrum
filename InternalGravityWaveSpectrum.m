@@ -50,7 +50,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 64
+                options.nK (1,1) double = 4
                 options.nZ (1,1) double =  65              
             end
 
@@ -105,10 +105,29 @@ classdef InternalGravityWaveSpectrum < handle
         self.FInitial = FInitial;
         self.GInitial = GInitial;
 
-        % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK
-        KRadial = linspace(0,Kmax,options.nK);   
+        % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
+        minOrder = floor(log10(2*pi/Kmax));
+        if minOrder==0
+            minOrder=1;
+        end
+
+        wavelength=logspace(minOrder,5,self.nK);
+        
+
+        % Example vector equally spaced in log scale
+        KRadialLogSpace = sort((2*pi)./wavelength);
+        
+        % Generate a linearly spaced vector for interpolation
+        linearSpaceVector = 1:numel(KRadialLogSpace);
+        
+        % Interpolate in log space
+        interpolatedLogValues = interp1(linearSpaceVector, KRadialLogSpace, linspace(1, numel(KRadialLogSpace), self.nK), 'pchip');
+        
+        % Transform interpolated values back to linear space
+        KRadial = interpolatedLogValues;  
         self.KRadial = KRadial;
                               
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%            
         % Step 2: Computation of F and G Matriz [nK, nZ, nModes]
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -378,23 +397,44 @@ classdef InternalGravityWaveSpectrum < handle
 
         %%%%%%%%%%%%%%%
 
-        function S = HKEAtFrequencies(self,omega,spectrumType)
+        function S = HKEAtFrequencies(self,z,options)
             arguments
                 self
-                omega
-                spectrumType
+                z
+                options.omegaVector = linspace(self.f0,0.8*sqrt(self.N2max),self.nK);
+                options.spectrumType
+                options.plot = true
+            end
+            
+            
+            
+            for i= 1:self.nK
+                for j=1:self.nModes
+                    HKEGivez(j,i)=interp1(self.zPerMode(:,i),self.HKE(:,j,i),z);  
+                end
             end
 
+            
+            for j=1:self.nModes
+                    HKEOmega(j,:)=interp1(self.omega(j,:),HKEGivez(j,:), options.omegaVector);  
+            end
+           
+            S = sum(HKEOmega,1); 
 
-        % Step 1: Multiplay G and F by Energy Coeficients and A matrix
-        % Step 2: Sum(?) over nModes and integrate over depth
-        % Step 3: Convert from wave number to frequency. That is the most
-        % complicated part, because even that I coded this function already
-        % I will need to adapt this. Or would be just to get the correspondent
-        % frequency for each K based on dispertion relation??
-        % Step 4: Interpolate in the omega vector that the user inputed
-        % Step 5: Return the data ou return an error. 
-        
+            
+            if options.plot ==1
+
+                figure(60)
+
+                plot(options.omegaVector, S*100)    
+                title("HKE")
+                ylabel("Variance [cm^2/s^2]")
+                xlabel("\omega [s^{-1}]")
+                grid on
+            else
+            end     
+              
+            
         end
 
 
