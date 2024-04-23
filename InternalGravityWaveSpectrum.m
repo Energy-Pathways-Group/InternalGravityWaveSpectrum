@@ -56,7 +56,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 20
+                options.nK (1,1) double = 6
                 options.nZ (1,1) double =  65          
             end
 
@@ -71,7 +71,7 @@ classdef InternalGravityWaveSpectrum < handle
             % 
             % self.N2=N2Func;  
             % self.latitude=latitude;          
-            % self.nModes=3;
+            % self.nModes=64;
             % self.nK=10;
             % self.nZ=65;
             % self.g=9.80665;
@@ -109,11 +109,10 @@ classdef InternalGravityWaveSpectrum < handle
         im = InternalModesWKBSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zInitial,latitude=self.latitude,nModes=self.nModes);       
         
         
-        %Unit test: how to test if this modes where computed rigth?
+        %Unit test: how to test if this modes were computed rigth?
         %Unit test: plot FiK,GiK related with this mode
 
         [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.8*sqrt(N2max));
-        %Ks= k.*conj(k); %if its not real, there ia a problem! check h!!!
         Kmax= max(k);
 
         self.FInitial = FInitial;
@@ -127,7 +126,6 @@ classdef InternalGravityWaveSpectrum < handle
 
        % KRadial equally spaced in log scale
         wavelengthLog=logspace(minOrder,5,self.nK);     
-        %KRadialLog=fliplr(logspace((2*pi)./wavelengthLog(1),(2*pi)./wavelengthLog(end),self.nK));     
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
 
@@ -177,51 +175,49 @@ classdef InternalGravityWaveSpectrum < handle
         % Step 1: Interp2 Quadrature points per K
         % ndgrid
         
-        nQP=1:size(self.zPerModeLog,1);
-        [nQPLogMat,KRadialLogMat]=ndgrid(nQP,KRadialLog);
-        
-        [nQPLinMat,KRadialLinMat]=ndgrid(nQP,KRadialLin);
-        
-        zPerModeLin=interpn(nQPLogMat,KRadialLogMat,self.zPerModeLog,nQPLinMat,KRadialLinMat,'spline');
  
+        zNew = linspace(-Lz,0,501);
+        GLin=self.scatteredInterpolation(GiK,zNew,self.KRadialLin,(1:self.nModes));
+        FLin=self.scatteredInterpolation(FiK,zNew,self.KRadialLin,(1:self.nModes));
 
-        % Step 2: Create vector with scattered point to scatteredInterp
-
-
-
+        hLin= self.interp2D(hiK,self.KRadialLin,(1:self.nModes));
+        omegaLin= self.interp2D(omegaiK,self.KRadialLin,(1:self.nModes));
 
         %
         self.zPerMode =zPerModeLog;
-        self.F = FiK;
-        self.G = GiK;
-        self.h = hiK;
-        self.omega = omegaiK;
+        self.F = FLin;
+        self.G = GLin;
+        self.h = hLin;
+        self.omega = omegaLin;
 
-      %   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      %   % Step 3: Computation of the energy coeficients based on 
-      %   % the squared equations (Jeffrey's paper)
-      %   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      % 
-      %   % 
-      %   % % Step 1: Compute coeficients in 2D [nModes,nK]
-      % 
-      %   HKEcoef = (1/4)*(1+ (f0^2./(self.omega.^2)));
-      %   VKEcoef= (1/4)* (KRadialLinear.^2 .* self.h.^2);        
-      %   PEcoef =  (1/4)* ((KRadialLinear.^2.*self.h.^2)./self.omega.^2);
-      % 
-      % 
-      %   % Step 2: Make the coeficients in 3D [nModes,nK,nZ]
-      %   % (not necessary to create the 3D matriz if using write index on .* )
-      % 
-      %   for i = 1:size(zPerMode,1)
-      %        HKEcoef3D(i,:,:)=HKEcoef;
-      %        VKEcoef3D(i,:,:)=VKEcoef;
-      %        PEcoef3D(i,:,:)=PEcoef;
-      %   end
-      % 
-      %   self.HKEcoef=HKEcoef3D;
-      %   self.VKEcoef=VKEcoef3D;
-      %   self.PEcoef=PEcoef3D;
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Step 3: Computation of the energy coeficients based on 
+        % the squared equations (Jeffrey's paper)
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        % 
+        % % Step 1: Compute coeficients in 2D [nModes,nKLin]
+
+        HKEcoef = (1/4)*(1+ (f0^2./(self.omega.^2)));
+        VKEcoef= (1/4)* ((self.KRadialLin)'.^2 .* self.h.^2);        
+        PEcoef =  (1/4)* (((self.KRadialLin)'.^2.*self.h.^2)./self.omega.^2);
+
+
+        % Step 2: Make the coeficients in 3D [nModes,nK,nZ]
+        % (not necessary to create the 3D matriz if using write index on .* )
+
+        for i = 1:size(self.G,1)
+             HKEcoef3D(i,:,:)=HKEcoef;
+             VKEcoef3D(i,:,:)=VKEcoef;
+             PEcoef3D(i,:,:)=PEcoef;
+        end
+
+        self.HKEcoef=HKEcoef3D;
+        self.VKEcoef=VKEcoef3D;
+        self.PEcoef=PEcoef3D;
+
+
+      %   %%%%%%% TEST!!!!! %%%%%%%%%%%
       % 
       % 
       %   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -247,24 +243,24 @@ classdef InternalGravityWaveSpectrum < handle
       %   M_norm = sum(M);
       % 
       %   %Create the energy matrix 2D 
-      %   totalEnergy = zeros(options.nModes,length(KRadialLinear));        
+      %   totalEnergy = zeros(options.nModes,length(self.KRadialLin));        
       % 
       % 
       % 
       %   % Step 4.1: Distributing the energy %%%
       %   for j=(1:options.nModes-1)    %I need to think better about the inds here!!!
       % 
-      %       for i=(1:length(KRadialLinear)-1)            
+      %       for i=(1:length(self.KRadialLin)-1)            
       % 
       %           %Defining LR                
       %           LR= sqrt(self.g*self.h(j,i))/f0;
       % 
       %           %Defining Bfunc and B_norm
       %           fun = @(k) (1./(k.^2*LR^2 + 1).^(1*slope))*LR;
-      %           B_norm = integral(fun,KRadialLinear(1),KRadialLinear(end));
+      %           B_norm = integral(fun,self.KRadialLin(1),self.KRadialLin(end));
       % 
       %           % Integrate the energy btw 2 Kh
-      %           E = E_T*(integral(fun,KRadialLinear(i),KRadialLinear(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
+      %           E = E_T*(integral(fun,self.KRadialLin(i),self.KRadialLin(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
       %           totalEnergy(j,i) = E;     
       %           clear E
       % 
@@ -295,7 +291,7 @@ classdef InternalGravityWaveSpectrum < handle
       %  self.PE=PE;
       % 
       end
-       
+
 
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -777,7 +773,7 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
          %%%%%%%%%
-         function SIModes = initScatteredInterpolation(self,data)
+         function SIModes = initScatteredInterpolant(self,data)
              arguments                
                  self 
                  data
@@ -790,94 +786,89 @@ classdef InternalGravityWaveSpectrum < handle
                 KVectorRepLog = reshape(repmat(self.KRadialLog,[self.nZ 1]),[],1);
                 lambdaVectorLog= (2*pi)./KVectorRepLog;
 
-             for n=1:self.nK
-                 dataVector = reshape(data(:,n,:),[],1);
+             if size(data,3)>1
+                 for n=1:self.nModes
+                     dataVector = reshape(data(:,n,:),[],1);
+    
+                     SIModes{n}=scatteredInterpolant(ZVectorLog,lambdaVectorLog,dataVector);                          
+                 end
+             else
+                 dataVector = reshape(data,[],1);
+    
+                 SIModes=scatteredInterpolant(ZVectorLog,lambdaVectorLog,dataVector); 
+             end
 
-                 SIModes{n}=scatteredInterpolant(ZVectorLog,lambdaVectorLog,dataVector);                          
-             end         
+         end           
 
-         end
-         %%%%%%%%%
-         function DataInterpMat = scatteredInterpolation2D(self, zVectorNew, KVectorNew, verticalMode, SIModes)
+         
+   
+
+        %%%%%%%%%
+        function DataInterpMat = scatteredInterpolation(self, data, zVectorNew, KVectorNew, verticalMode)
              arguments                
-                 self                  
+                 self 
+                 data
                  zVectorNew
                  KVectorNew
                  verticalMode
-                 SIModes
              end
 
+             SIModes = initScatteredInterpolant(self,data);
+
             
-            %zLin
-            ZVectorLin=reshape(repmat(zVectorNew,[1, length(KVectorNew)]),[],1);
+             %zLin
+             ZVectorLin=reshape(repmat(zVectorNew,[1, length(KVectorNew)]),[],1);
             
-            %Klin
-            KVectorRepLin = reshape(permute(repmat(KVectorNew,[1 length(zVectorNew)]),[2 1]),[],1);
-            lambdaVectorLin= (2*pi)./KVectorRepLin;
+             %Klin
+             KVectorRepLin = reshape(permute(repmat(KVectorNew,[1 length(zVectorNew)]),[2 1]),[],1);
+             lambdaVectorLin= (2*pi)./KVectorRepLin;
 
+             if size(data,3)>1
 
-            % Interpolating
-            DataInterp = SIModes{verticalMode}(ZVectorLin, lambdaVectorLin);
-
-            DataInterpMat =reshape(DataInterp, length(zVectorNew),length(KVectorNew));     
-         end
-
-
-
-         %%%%%%%%%
-          function DataInterpMat = scatteredInterpolation(self, Data, zVectorNew, modeVectorNew, KVectorNew)
-            arguments                
-                self 
-                Data
-                zVectorNew
-                modeVectorNew
-                KVectorNew
-            end
- 
-            %%%%%%% BEFORE INTERPOLATION %%%%%%%%%%%%%
-            % ZLog
-            ZVectorLog=reshape(permute(repmat(self.zPerModeLog,[1 1 self.nModes]),[1,3,2]),[],1);
+                 for i=1:length(verticalMode)
     
+                     DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorLin);
+    
+                     DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
+                 end
 
-            % ModeLog
-            modeRepVecLog= reshape(repmat(1:self.nModes,[self.nZ 1 self.nK]),[],1);
+             else
 
-            % KLog
-            KVectorRepLog = reshape(permute(repmat(self.KRadialLog,[self.nZ 1 self.nModes]),[1,3,2]),[],1);
-            lambdaVectorLog= (2*pi)./KVectorRepLog;
-                        
-            % GLog
-            DataVector=reshape(Data,[],1);
+                 for i=1:length(verticalMode)
+    
+                     DataInterp = SIModes(ZVectorLin, lambdaVectorLin);
+    
+                     DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
+                 end
 
-           
-            % Creating the Interpolant
-            SI = scatteredInterpolant(ZVectorLog,modeRepVecLog,lambdaVectorLog,DataVector);
+             end
+             DataInterpMat = permute(DataInterpMat1,[1,3,2]);
 
-            %%%%%%% AFTER INTERPOLATION %%%%%%%%%%%%%
+             % Interpolating
+                  
+        end
 
-            %zLin
-            ZVectorLin=reshape(repmat(zVectorNew,[1 length(modeVectorNew),length(KVectorNew)]),[],1);
+       %%%%%%%%%%%%
+       function DataInterp2D = interp2D(self, data, KVectorNew, verticalMode)
+             arguments                
+                 self 
+                 data
+                 KVectorNew
+                 verticalMode
+             end
+             [X,Y] = ndgrid((1:self.nModes),self.KRadialLog);
+             [Xq,Yq]= ndgrid(verticalMode,KVectorNew);
 
-            %modeLin
-            modeVectorRepLin = reshape(repmat(modeVectorNew,[length(zVectorNew) 1 length(KVectorNew)]),[],1);
-
-            %Klin
-            KVectorRepLin = reshape(permute(repmat(KVectorNew,[1 length(zVectorNew) length(modeVectorNew)]),[2 3 1]),[],1);
-            lambdaVectorLin= (2*pi)./KVectorRepLin;
+             DataInterp2D = interpn(X,Y,data,Xq,Yq);
+           end
+        
 
 
-
-            % Interpolating
-            DataInterp = SI(ZVectorLin, modeVectorRepLin, lambdaVectorLin);
-
-            DataInterpMat =reshape(DataInterp, length(zVectorNew), length(modeVectorNew),length(KVectorNew));             
-     
 
          end
 
 
     end
-end
 
     
 
