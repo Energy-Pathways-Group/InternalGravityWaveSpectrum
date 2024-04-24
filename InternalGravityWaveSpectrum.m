@@ -34,6 +34,7 @@ classdef InternalGravityWaveSpectrum < handle
         A
 
         zPerModeLog
+        zNew
 
 
     end
@@ -125,13 +126,13 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
        % KRadial equally spaced in log scale
-        wavelengthLog=logspace(minOrder,5,self.nK);     
+        wavelengthLog=logspace(minOrder,20,self.nK);     
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
 
         % KRadial equally spaced in linear scale
-        wavelengthLin=linspace(10^minOrder,10^5,100);
-        KRadialLin=fliplr(linspace((2*pi)./wavelengthLin(1),(2*pi)./wavelengthLin(end),100))';        
+        wavelengthLin=linspace(10^minOrder,10^5,10000);
+        KRadialLin=fliplr(linspace((2*pi)./wavelengthLin(1),(2*pi)./wavelengthLin(end),10000))';        
         self.KRadialLin = KRadialLin; 
 
 
@@ -166,7 +167,8 @@ classdef InternalGravityWaveSpectrum < handle
 
             
         end
-        self.zPerModeLog = zPerModeLog;
+        self.zPerModeLog =zPerModeLog;
+
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %             INTERPOLATION IN LINEAR SCALE              %
@@ -184,6 +186,7 @@ classdef InternalGravityWaveSpectrum < handle
         omegaLin= self.interp2D(omegaiK,self.KRadialLin,(1:self.nModes));
 
         %
+        self.zNew = zNew;
         self.zPerMode =zPerModeLog;
         self.F = FLin;
         self.G = GLin;
