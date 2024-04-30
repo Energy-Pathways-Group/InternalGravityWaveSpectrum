@@ -57,7 +57,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 6
+                options.nK (1,1) double = 64
                 options.nZ (1,1) double =  65          
             end
 
@@ -126,7 +126,7 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
        % KRadial equally spaced in log scale
-        wavelengthLog=logspace(minOrder,20,self.nK);     
+        wavelengthLog=logspace(minOrder,5,self.nK);     
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
 

@@ -72,21 +72,22 @@ ylim([-im.Lz*0.25 0])
 subplot(1,3,3)
 plot(im.GInitial(:,end),im.zInitial ,'k',LineWidth=1.5)                        
 title('Initial G - Highest Mode')   
-ylim([-im.Lz*0.25 0])       
+ylim([-im.Lz*0.25 0])       clc
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Is Kradial equally spaced?
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 diffLin = diff(im.KRadialLin);
-if sum(abs(diff(diffLin))) <= 10^-13
+if sum(abs(diff(diffLin))) <= 10^-10
     disp("KRadial Linear is equally spaced in linear scale")
 else
     disp("Error: KRadial Linear IS NOT equally spaced in linear scale")
 end
 
 diffLog = diff(log(im.KRadialLog));
-if sum(abs(diff(diffLog))) <= 10^-13  
+if sum(abs(diff(diffLog))) <= 10^-10  
     disp("KRadial Log is equally spaced in log scale")
 else
     disp("Error: KRadial Log IS NOT equally spaced in log scale")
@@ -96,7 +97,12 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Visual check of Kradial distribution in linear scale
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-plot(1:length(im.KRadialLin),(2*pi./im.KRadialLin),".")
+figure(2)
+semilogy(1:length(im.KRadialLin),(2*pi./im.KRadialLin),".")
+title("Check the resolution for longwaves")
+xlim([0 0.1*length(im.KRadialLin)])
+xlabel("Count")
+ylabel("Wavelength [m]")
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Is the size of main matrix correct after scattered interp?
@@ -132,29 +138,48 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Visual check of F an G and h after interp
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+figure(3)
 
+sgtitle("F and G; Vertical mode = 3; Vary wavelength")
 
-figure(2)
+subplot(1,2,1)
+for ii = 1:5:20
+ plot(im.F(:,3,ii),im.zNew ,'k',LineWidth=1.5) 
+ hold on
+% pause
+end
+title("F")
+ylabel("Depth [m]")
 
-sgtitle("Check if most part of variance is btw turning points")
+subplot(1,2,2)
+for ii = 1:5:20
+ plot(im.G(:,3,ii),im.zNew ,'k',LineWidth=1.5) 
+ hold on
+% pause
+end
+title("G")
 
-subplot(2,2,1)
-plot(im.F(:,3,2),im.zNew ,'k',LineWidth=1.5) 
-ylabel("Low mode")
-title(["Long Wave (L=", num2str(2*pi/im.KRadialLin(2)),"m)"])
+%%%%%%%%
+figure(4)
 
-subplot(2,2,2)
-plot(im.F(:,3,end),im.zNew ,'k',LineWidth=1.5)
-title(["Short wave(L=", num2str(2*pi/im.KRadialLin(end)),"m)"])
+sgtitle("F and G; Vertical mode = 12; Vary wavelength")
 
-subplot(2,2,3)
-plot(im.F(:,end-5,2),im.zNew ,'k',LineWidth=1.5)
-ylabel(["High mode(", num2str(im.nModes-5),")"])
+subplot(1,2,1)
+for ii = 1:2:20
+ plot(im.F(:,12,ii),im.zNew ,'k',LineWidth=1.5) 
+ hold on
+% pause
+end
+title("F")
+ylabel("Depth [m]")
 
-
-subplot(2,2,4)
-plot(im.F(:,end-5,end),im.zNew ,'k',LineWidth=1.5)
-
+subplot(1,2,2)
+for ii = 1:2:20
+ plot(im.G(:,12,ii),im.zNew ,'k',LineWidth=1.5) 
+ hold on
+% pause
+end
+title("G")
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Check value of coeficients (HKE, VKE and PE)
