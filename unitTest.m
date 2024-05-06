@@ -14,17 +14,24 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Is Coriolis frequency correct?
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-if im.f0 >= -1 && im.f0<=1
+% check is not zero
+if im.latitude >= -1 && im.latitude <=1
     disp("Coriolis frequency has a resonable value")
 else
     disp("Error: Coriolis frequency DOES NOT have a resonable value")
 end
 
+
+import matlab.unittest.constraints.Throws
+testCase = matlab.unittest.TestCase.forInteractiveUse;
+testCase.verifyThat(@() InternalGravityWaveSpectrum(N2Func,Lz,"latitude",[-5:1:5]),Throws("Latitude:MustBeAwayEquator"))
+
+testCase.verifyThat(@() InternalGravityWaveSpectrum(N2Func,Lz,"latitude",100),Throws("Latitude:WrongValue"))
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % How to check if N2 is right or "smooth enough"?
 % Is N2 smooth enouth?
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%monotonic use Jeffrey's test internal modes
 
 % IDEIA 1
 N2Diff = diff(im.N2zInitial);
@@ -46,6 +53,16 @@ if abs(N2Diff - im.N2zInitial) <= threshold
 else
     disp("N2 IS NOT smooth enough")
 end
+
+
+dOmegaVector = diff(omega);
+if any(dOmegaVector<0)
+    error('omega must be strictly monotonically increasing.')
+end
+
+warning('Mean stratification (N2) changes by %d orders of magnitude. This may lead to numerical instability.',round(dStrat));
+
+validateattributes( yourVector, { 'numeric' }, { 'vector', 'increasing' } )
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Visual check of modes on highest freq
@@ -72,8 +89,9 @@ ylim([-im.Lz*0.25 0])
 subplot(1,3,3)
 plot(im.GInitial(:,end),im.zInitial ,'k',LineWidth=1.5)                        
 title('Initial G - Highest Mode')   
-ylim([-im.Lz*0.25 0])       clc
+ylim([-im.Lz*0.25 0])       
 
+% Use internal mode exponential estrat toolbox and plot same mode
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Is Kradial equally spaced?
@@ -95,7 +113,7 @@ end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Visual check of Kradial distribution in linear scale
+% Visual check of Horizontal wavelength distribution in linear scale
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 figure(2)
 semilogy(1:length(im.KRadialLin),(2*pi./im.KRadialLin),".")

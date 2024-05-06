@@ -55,11 +55,20 @@ classdef InternalGravityWaveSpectrum < handle
             arguments
                 N2 %handle function
                 Lz (1,1) {mustBePositive}
-                options.latitude (1,1) double = 33
+                options.latitude (1,1) double = 33 %set condition. How to modify erro mesage? costume validator
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 64
+                options.nK (1,1) double = 32
                 options.nZ (1,1) double =  65          
             end
+
+            
+            if options.latitude >= -5 && options.latitude < 5
+                error("Latitude:MustBeAwayEquator","This toolbox does not provide a good solution near the Equator (5°S to 5°N)")
+            
+            elseif options.latitude > 90 || options.latitude < -90
+                error("Latitude:WrongValue","Latitude not valid")
+            end
+
 
             
             self.N2=N2;  
@@ -99,6 +108,17 @@ classdef InternalGravityWaveSpectrum < handle
         zInitial = linspace(-Lz,0,10001);
         N2zInitial= self.N2(zInitial);
         N2max = max(N2zInitial);
+
+
+       % This function checks if the vector is monotonic, but if the test
+       % fails it throws an error. I didn't find a way to change for a
+       % warning. 
+
+        validateattributes( N2zInitial, { 'numeric' }, { 'vector', 'increasing' } )
+
+
+        %The N2Func is used in InternalModesSpectral. So if I correct the
+        %vector I would need to create a new function from that?
 
         self.zInitial=zInitial;
         self.N2zInitial=N2zInitial;
