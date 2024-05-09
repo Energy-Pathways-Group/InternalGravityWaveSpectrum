@@ -58,7 +58,8 @@ classdef InternalGravityWaveSpectrum < handle
                 options.latitude (1,1) double = 33 %set condition. How to modify erro mesage? costume validator
                 options.nModes (1,1) double = 64
                 options.nK (1,1) double = 32
-                options.nZ (1,1) double =  65          
+                options.nZ (1,1) double =  65   
+                options.shouldForceMonotonicDensity {mustBeNumericOrLogical} = 0
             end
 
             
@@ -110,15 +111,10 @@ classdef InternalGravityWaveSpectrum < handle
         N2max = max(N2zInitial);
 
 
-       % This function checks if the vector is monotonic, but if the test
-       % fails it throws an error. I didn't find a way to change for a
-       % warning. 
+       if options.shouldForceMonotonicDensity == 1 
+           validateattributes( N2zInitial, { 'numeric' }, { 'vector', 'increasing' } )
+       end
 
-        validateattributes( N2zInitial, { 'numeric' }, { 'vector', 'increasing' } )
-
-
-        %The N2Func is used in InternalModesSpectral. So if I correct the
-        %vector I would need to create a new function from that?
 
         self.zInitial=zInitial;
         self.N2zInitial=N2zInitial;
