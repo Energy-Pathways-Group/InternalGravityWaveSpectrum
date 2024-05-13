@@ -5,6 +5,8 @@ classdef unitTestIGWS < matlab.unittest.TestCase
     % Leticia fabre de Lima
     %
     % April, 2024   Version 1.0
+    % result = run(matlab.unittest.TestSuite.fromClass(?TestWVTransformInitialization));
+    % rt = table(result)
 
 
     properties
@@ -26,53 +28,69 @@ classdef unitTestIGWS < matlab.unittest.TestCase
 
     properties (ClassSetupParameter)
         Lz = struct('Lz',4000);
-        latitudeInit= (-90:10:100); % Define latitude here if needed
+        latitudeInit = {0,5,10,90}; % Define latitude here if needed
         stratification = {'exponential','constant','arbitrary'};        
     end
 
     methods (TestClassSetup)
-        function classSetup(testCase, Lz, latitudeInit,stratification)
+        function classSetup(testCase,Lz, latitudeInit,stratification)
+            disp("here")
             switch stratification
                 case 'exponential'
                    N2=@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300);
                 case 'constant'
                    N2=@(z)5.2e-3;      
                 case 'arbitrary'                    
-                   N2=MyUnitTest.getArbitraryStratFunc();         
+                   N2=unitTestIGWS.getArbitraryStratFunc();         
             end
-           testCase.im = InternalGravityWaveSpectrum(N2, Lz, 'latitude', latitudeInit);
+            testCase.im = InternalGravityWaveSpectrum(N2, Lz, 'latitude', latitudeInit);
 
         end
     end
 
-    methods (TestParameterDefinition, Static)
-        function latitude = initializeLatitudeParameter()
-            latitude = (-90:10:100);
-        end
-    end
+    % methods (TestParameterDefinition, Static)
+    %     function latitude = initializeLatitudeParameter()
+    %         latitude = {0,5,10,90};
+    %     end
+    % end
 
    properties (TestParameter)
-        latidute
+        latitude  = {0,5,10,90}
+   end
+
+   methods (Test)
+       function testInitWithLatitude(testCase,latitude)
+        % % Test if the correct error is thrown based on latitude value
+        % 
+        % % Assuming InternalGravityWaveSpectrum has a method that sets latitude
+        % testCase.im.setLatitude(latitude);
+        % 
+        % % Depending on the latitude, the class should throw different errors
+        % if latitude < -10
+        %     % Expecting 'MustBeAwayEquator' error for latitude less than -10
+        %     testCase.verifyThat(@() testCase.im.someMethod(), Throws("Latitude:MustBeAwayEquator"));
+        % else
+        %     % Expecting 'WrongValue' error for latitude greater than or equal to -10
+        %     testCase.verifyThat(@() testCase.im.someMethod(), Throws("Latitude:WrongValue"));
+
+        
+            if latitude < 5
+                testCase.verifyError(@() InternalGravityWaveSpectrum(N2, testCase.Lz, 'latitude', latitude),'MATLAB:validators:mustBeGreaterThanOrEqual' );
+            elseif latitude > 85
+                testCase.verifyError(@() InternalGravityWaveSpectrum(N2, testCase.Lz, 'latitude', latitude),'MATLAB:validators:mustBeLessThanOrEqual' );
+            else
+                testCase.verifyWarningFree(@() InternalGravityWaveSpectrum(N2, testCase.Lz, 'latitude', latitude));
+            end        
     end
 
-methods (Test)
-    function isLatitudeCorrect(testCase, latitude)
-        % Test if the correct error is thrown based on latitude value
 
-        % Assuming InternalGravityWaveSpectrum has a method that sets latitude
-        testCase.im.setLatitude(latitude);
 
-        % Depending on the latitude, the class should throw different errors
-        if latitude < -10
-            % Expecting 'MustBeAwayEquator' error for latitude less than -10
-            testCase.verifyThat(@() testCase.im.someMethod(), Throws("Latitude:MustBeAwayEquator"));
-        else
-            % Expecting 'WrongValue' error for latitude greater than or equal to -10
-            testCase.verifyThat(@() testCase.im.someMethod(), Throws("Latitude:WrongValue"));
-        end
+
+
+
     end
 end
-end
+
 
 
 
