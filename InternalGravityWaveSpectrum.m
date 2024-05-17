@@ -27,7 +27,8 @@ classdef InternalGravityWaveSpectrum < handle
 
         HKEcoef, VKEcoef, PEcoef
 
-        HKE, VKE, PE
+        HKE, VKE, PE, TE
+
         
         HKEatK, VKEatK, PEatK, TEatK
 
@@ -303,6 +304,7 @@ classdef InternalGravityWaveSpectrum < handle
        A2D = sqrt((totalEnergy./self.h)/2);
 
        for i = 1:size(self.zNew,2)
+           TE(i,:,:)=totalEnergy;
            A(i,:,:)=A2D; 
        end
 
@@ -317,6 +319,7 @@ classdef InternalGravityWaveSpectrum < handle
        self.HKE=HKE;
        self.VKE=VKE;
        self.PE=PE;
+       self.TE=TE;
 
       end
 

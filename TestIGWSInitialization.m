@@ -8,7 +8,11 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
     %
     % result = run(matlab.unittest.TestSuite.fromClass(?TestIGWSInitialization));
     % rt = table(result)
-    %rt.Details{4,1}.DiagnosticRecord.Report
+    % rt.Details{4,1}.DiagnosticRecord.Report
+
+    properties
+        im
+    end
 
     methods (Static)
             function arbitraryStratFunc = getArbitraryStratFunc()
@@ -52,6 +56,12 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
         function testValidationWithInvalidInput(testCase)
             testCase.verifyError(@()InternalGravityWaveSpectrum(@(z) randn(size(z))*5.2e-3,4000,shouldForceMonotonicDensity=1), 'MATLAB:expectedIncreasing');
         end
+
+        function testTotalEnergy(testCase)
+            testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000,shouldForceMonotonicDensity=0);
+            testCase.verifyEqual(testCase.im.HKE + testCase.im.VKE + testCase.im.PE, testCase.im.TE,"AbsTol", 0.0001)
+        end
+
     end
 
 
