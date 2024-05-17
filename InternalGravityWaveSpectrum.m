@@ -36,6 +36,8 @@ classdef InternalGravityWaveSpectrum < handle
         zPerModeLog
         zNew
 
+        shouldForceMonotonicDensity
+
 
     end
     
@@ -79,6 +81,7 @@ classdef InternalGravityWaveSpectrum < handle
             self.nZ=options.nZ;
             self.g=9.80665;
             self.Lz=Lz;
+            self.shouldForceMonotonicDensity=options.shouldForceMonotonicDensity;
             % 
             % self.N2=N2Func;  
             % self.latitude=latitude;          
@@ -87,6 +90,7 @@ classdef InternalGravityWaveSpectrum < handle
             % self.nZ=65;
             % self.g=9.80665;
             % self.Lz=Lz;
+            % self.shouldForceMonotonicDensity=1;
             
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 1: Computation of min and max Kh based on the
@@ -111,7 +115,7 @@ classdef InternalGravityWaveSpectrum < handle
         N2max = max(N2zInitial);
 
 
-       if options.shouldForceMonotonicDensity == 1 
+       if self.shouldForceMonotonicDensity == 1 
            validateattributes( N2zInitial, { 'numeric' }, { 'vector', 'increasing' } )
        end
 
@@ -122,10 +126,10 @@ classdef InternalGravityWaveSpectrum < handle
        
                     
         % Step 1.3: Compute the K associated with max(N2)   
-       
+
         im = InternalModesWKBSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zInitial,latitude=self.latitude,nModes=self.nModes);       
-        
-        
+
+
         %Unit test: how to test if this modes were computed rigth?
         %Unit test: plot FiK,GiK related with this mode
 
@@ -147,12 +151,12 @@ classdef InternalGravityWaveSpectrum < handle
         self.KRadialLog = KRadialLog;
 
         % KRadial equally spaced in linear scale
-        wavelengthLin=linspace(10^minOrder,10^5,10000);
-        KRadialLin=fliplr(linspace((2*pi)./wavelengthLin(1),(2*pi)./wavelengthLin(end),10000))';        
-        self.KRadialLin = KRadialLin; 
+        %wavelengthLin=linspace(10^minOrder,10^5,10000);
+        %KRadialLin=fliplr(linspace((2*pi)./wavelengthLin(1),(2*pi)./wavelengthLin(end),10000))';        
+        %self.KRadialLin = KRadialLin; 
 
 
-        
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%            
         % Step 2: Computation of F and G Matriz [nK, nZ, nModes]
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -161,27 +165,27 @@ classdef InternalGravityWaveSpectrum < handle
         normalization = Normalization.kConstant;
 
         for iK=1:length(KRadialLog)    
-    
+
             im = InternalModesSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zInitial,latitude=self.latitude,nModes=self.nModes);
-                   
-        
+
+
             im.normalization = normalization;
             im.upperBoundary = upperBoundary;  
-            
-            
+
+
             zPerModeLog(:,iK) = im.GaussQuadraturePointsForModesAtWavenumber(self.nModes+1,KRadialLog(iK));
-            
+
             im = InternalModesSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zPerModeLog(:,iK),latitude=self.latitude,nModes=self.nModes);
             [FiK(:,:,iK),GiK(:,:,iK),hiK(:,iK),omegaiK(:,iK)] = im.ModesAtWavenumber(KRadialLog(iK)); %modes at quadrature points and not equally spaced
-            
-            
+
+
             %%%%%%%% IMPORTANT!!!!! %%%%%%%%%%%%%
 
             % the format for FiK and GiK is [depth (nZ), vertical modes (nModes), horiz wavenumber (nK)]
             % the format for hiK and omegaiK is [vertical modes (nModes), horiz wavenumber (nK)]
             % the format for hiK and omegaiK is [vertical modes (nModes), horiz wavenumber (nK)]
 
-            
+
         end
         self.zPerModeLog =zPerModeLog;
 
@@ -189,17 +193,25 @@ classdef InternalGravityWaveSpectrum < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %             INTERPOLATION IN LINEAR SCALE              %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        
+
         % Step 1: Interp2 Quadrature points per K
         % ndgrid
-        
- 
-        zNew = linspace(-Lz,0,501);
-        GLin=self.scatteredInterpolation(GiK,zNew,self.KRadialLin,(1:self.nModes));
-        FLin=self.scatteredInterpolation(FiK,zNew,self.KRadialLin,(1:self.nModes));
 
-        hLin= self.interp2D(hiK,self.KRadialLin,(1:self.nModes));
-        omegaLin= self.interp2D(omegaiK,self.KRadialLin,(1:self.nModes));
+
+        zNew = linspace(-Lz,0,501);
+        GLin=self.scatteredInterpolation(GiK,zNew,self.KRadialLog,(1:self.nModes));
+        FLin=self.scatteredInterpolation(FiK,zNew,self.KRadialLog,(1:self.nModes));
+        
+        %FOR TEST ONLY
+        % zNew = linspace(-Lz,0,501);
+        % GLin=scatteredInterpolation(self,GiK,zNew,KRadialLog,(1:nModes));
+        % FLin=scatteredInterpolation(self,FiK,zNew,KRadialLog,(1:nModes));
+       
+        hLin= interp2D(self,hiK,KRadialLog,(1:self.nModes));
+        omegaLin= interp2D(self,omegaiK,KRadialLog,(1:self.nModes));
+
+        % hLin= self.interp2D(hiK,self.KRadialLog,(1:self.nModes));
+        % omegaLin= self.interp2D(omegaiK,self.KRadialLog,(1:self.nModes));
 
         %
         self.zNew = zNew;
@@ -218,13 +230,14 @@ classdef InternalGravityWaveSpectrum < handle
         % % Step 1: Compute coeficients in 2D [nModes,nKLin]
 
         HKEcoef = (1/4)*(1+ (f0^2./(self.omega.^2)));
-        VKEcoef= (1/4)* ((self.KRadialLin)'.^2 .* self.h.^2);        
-        PEcoef =  (1/4)* (((self.KRadialLin)'.^2.*self.h.^2)./self.omega.^2);
+        VKEcoef= (1/4)* ((self.KRadialLog).^2 .* self.h.^2);        
+        PEcoef =  (1/4)* (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);
 
 
         % Step 2: Make the coeficients in 3D [nModes,nK,nZ]
         % (not necessary to create the 3D matriz if using write index on .* )
-
+        
+        % I MUST CHANGE THIS
         for i = 1:size(self.G,1)
              HKEcoef3D(i,:,:)=HKEcoef;
              VKEcoef3D(i,:,:)=VKEcoef;
@@ -236,79 +249,75 @@ classdef InternalGravityWaveSpectrum < handle
         self.PEcoef=PEcoef3D;
 
 
-      %   %%%%%%% TEST!!!!! %%%%%%%%%%%
-      % 
-      % 
-      %   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      %   % Step 4: Computation of energy distribution according 
-      %   % with the alternative Internal Wave Spectrum
-      %   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-      % 
-      %   % Should I define the function here or do something apart?
-      %   % for now I will past here and just adapt:
-      % 
-      %   j_star=3;
-      %   slope=1;
-      %   GMAmplitude =1;
-      % 
-      %   % GM Parameters. We will use the same??           
-      %   L_gm = 1.3e3; % thermocline exponential scale, meters
-      %   invT_gm = 5.2e-3; % reference buoyancy frequency, radians/seconds
-      %   E_gm = 6.3e-5; % non-dimensional energy parameter
-      %   E_T = L_gm*L_gm*L_gm*invT_gm*invT_gm*E_gm*GMAmplitude;
-      % 
-      %   % Compute the proper M normalization
-      %   M = (j_star^2 +(1:1024).^2).^((-5/4));
-      %   M_norm = sum(M);
-      % 
-      %   %Create the energy matrix 2D 
-      %   totalEnergy = zeros(options.nModes,length(self.KRadialLin));        
-      % 
-      % 
-      % 
-      %   % Step 4.1: Distributing the energy %%%
-      %   for j=(1:options.nModes-1)    %I need to think better about the inds here!!!
-      % 
-      %       for i=(1:length(self.KRadialLin)-1)            
-      % 
-      %           %Defining LR                
-      %           LR= sqrt(self.g*self.h(j,i))/f0;
-      % 
-      %           %Defining Bfunc and B_norm
-      %           fun = @(k) (1./(k.^2*LR^2 + 1).^(1*slope))*LR;
-      %           B_norm = integral(fun,self.KRadialLin(1),self.KRadialLin(end));
-      % 
-      %           % Integrate the energy btw 2 Kh
-      %           E = E_T*(integral(fun,self.KRadialLin(i),self.KRadialLin(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
-      %           totalEnergy(j,i) = E;     
-      %           clear E
-      % 
-      %       end               
-      % 
-      %   end 
-      % 
-      %   A2D = sqrt((totalEnergy./self.h)/2);
-      % 
-      %  for i = 1:size(zPerMode,1)
-      %      A(i,:,:)=A2D; 
-      %  end
-      % 
-      %  self.A = A;
-      % 
-      %  N2atQuadPoints=self.N2(self.zPerMode);
-      % 
-      %  for i = 1:length(self.nModes)
-      %       N2atQuadPoints3D(:,i,:)=N2atQuadPoints;
-      %  end 
-      % 
-      %  HKE = self.A.^2.*self.HKEcoef.*self.F.^2;
-      %  VKE = self.A.^2.*self.VKEcoef.*self.G.^2;
-      %  PE= self.A.^2.*self.PEcoef.*self.G.^2.*N2atQuadPoints3D;
-      % 
-      %  self.HKE=HKE;
-      %  self.VKE=VKE;
-      %  self.PE=PE;
-      % 
+        %%%%%%% TEST!!!!! %%%%%%%%%%%
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Step 4: Computation of energy distribution according 
+        % with the alternative Internal Wave Spectrum
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        % Should I define the function here or do something apart?
+        % for now I will past here and just adapt:
+
+        j_star=3;
+        slope=1;
+        GMAmplitude =1;
+
+        % GM Parameters. We will use the same??           
+        L_gm = 1.3e3; % thermocline exponential scale, meters
+        invT_gm = 5.2e-3; % reference buoyancy frequency, radians/seconds
+        E_gm = 6.3e-5; % non-dimensional energy parameter
+        E_T = L_gm*L_gm*L_gm*invT_gm*invT_gm*E_gm*GMAmplitude;
+
+        % Compute the proper M normalization
+        M = (j_star^2 +(1:1024).^2).^((-5/4));
+        M_norm = sum(M);
+      
+         %Create the energy matrix 2D 
+         totalEnergy = zeros(self.nModes,length(self.KRadialLog));        
+
+
+
+        % Step 4.1: Distributing the energy %%%
+        for j=(1:self.nModes-1)    %I need to think better about the inds here!!!
+
+            for i=(1:length(self.KRadialLog)-1)            
+
+                %Defining LR                
+                LR= sqrt(self.g*self.h(j,i))/f0;
+
+                %Defining Bfunc and B_norm
+                fun = @(k) (1./(k.^2*LR^2 + 1).^(1*slope))*LR;
+                B_norm = integral(fun,self.KRadialLog(1),self.KRadialLog(end));
+
+                % Integrate the energy btw 2 Kh
+                E = E_T*(integral(fun,self.KRadialLog(i),self.KRadialLog(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
+                totalEnergy(j,i) = E;     
+                clear E
+
+            end               
+
+        end 
+
+       A2D = sqrt((totalEnergy./self.h)/2);
+
+       for i = 1:size(self.zNew,2)
+           A(i,:,:)=A2D; 
+       end
+
+       self.A = A;
+
+       N2atQuadPoints=self.N2(self.zNew);
+
+       HKE = self.A.^2.*self.HKEcoef.*self.F.^2;
+       VKE = self.A.^2.*self.VKEcoef.*self.G.^2;
+       PE= self.A.^2.*self.PEcoef.*self.G.^2.*N2atQuadPoints';
+
+       self.HKE=HKE;
+       self.VKE=VKE;
+       self.PE=PE;
+
       end
 
 
@@ -832,6 +841,7 @@ classdef InternalGravityWaveSpectrum < handle
                  verticalMode
              end
 
+             % WHY IS THAT BEEN CALLED SO MANY TIMES?
              SIModes = initScatteredInterpolant(self,data);
 
             
@@ -845,7 +855,9 @@ classdef InternalGravityWaveSpectrum < handle
              if size(data,3)>1
 
                  for i=1:length(verticalMode)
-    
+
+
+                     %WHY IS THAT BEEN CALLED SO MANY TIMES?   
                      DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorLin);
     
                      DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
