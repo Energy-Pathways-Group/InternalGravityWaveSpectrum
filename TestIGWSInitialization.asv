@@ -65,22 +65,10 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
         % Test Vertical Bases
         function testVerticalBases(testCase)
-            D=4000;
-            testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
+            testCase.im = InternalGravityWaveSpectrum(@(z) 5.2e-3,4000);
 
-            % why is phase oposite?
-            for jind= 1:testCase.im.nModes
-                for zind= 1:length(testCase.im.zNew)
-                    A2 = (1/D)*(2*testCase.im.g/((5.2e-3) - (testCase.im.f0)^2));
-                    A= sqrt(A2);
-                    m = jind*pi/D;
+            for ind 1:
 
-                    G(zind,jind)=A*sin(m*(testCase.im.zNew(zind)+D));
-                    
-                end
-            end
-
-            testCase.verifyEqual(squeeze(testCase.im.G(:,:,1)), G,"RelTol", 0.3)
 
         end
 

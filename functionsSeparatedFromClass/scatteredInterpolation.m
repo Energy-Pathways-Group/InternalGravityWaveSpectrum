@@ -7,16 +7,26 @@ function DataInterpMat = scatteredInterpolation(self,data, zVectorNew, KVectorNe
                  verticalMode
              end
 
+             %verticalMode=1:64;
+             %zVectorNew=zNew
+             %data=GiK;
+             %zNew = linspace(-Lz,0,501);
+             %zVectorNew=zNew;
+             %KVectorNew=self.KRadialLog;
+
              % WHY IS THAT BEEN CALLED SO MANY TIMES?
              SIModes = initScatteredInterpolant(self,data);
+
+             %%% Test
+             
 
             
              %zLin
              ZVectorLin=reshape(repmat(zVectorNew,[1, length(KVectorNew)]),[],1);
             
              %Klin
-             KVectorRepLin = reshape(permute(repmat(KVectorNew,[1 length(zVectorNew)]),[2 1]),[],1);
-             lambdaVectorLin= (2*pi)./KVectorRepLin;
+             KVectorRepNew = reshape(permute(repmat(KVectorNew,[1 length(zVectorNew)]),[2 1]),[],1);
+             lambdaVectorNew= (2*pi)./KVectorRepNew;
 
              if size(data,3)>1
 
@@ -24,7 +34,7 @@ function DataInterpMat = scatteredInterpolation(self,data, zVectorNew, KVectorNe
 
 
                      %WHY IS THAT BEEN CALLED SO MANY TIMES?   
-                     DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorLin);
+                     DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorNew);
     
                      DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
                  end

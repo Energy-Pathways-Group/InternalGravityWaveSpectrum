@@ -211,11 +211,17 @@ end
  %            sgtitle("F and G; Vertical mode = 3; Vary wavelength")
  % 
  %            subplot(1,2,1)
- %            for ii = 1:5:20
- %             plot(im.F(:,3,ii),im.zNew ,'k',LineWidth=1.5) 
- %             hold on
- %            % pause
- %            end
+            for ii = 1:5:20
+             plot(im.F(:,3,ii),im.zNew ,'k',LineWidth=1.5) 
+             hold on
+            % pause
+            end
+
+             for ii = 1:3
+             plot(FiK(:,3,ii),zPerModeLog(:,ii) ,'k',LineWidth=1.5) 
+             hold on
+            % pause
+            end
  %            title("F")
  %            ylabel("Depth [m]")
  % 

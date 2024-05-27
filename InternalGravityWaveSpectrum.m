@@ -39,6 +39,11 @@ classdef InternalGravityWaveSpectrum < handle
 
         shouldForceMonotonicDensity
 
+        %Proprieties for test:
+        E_T
+        N2atQuadPoints
+
+
 
     end
     
@@ -60,7 +65,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33 %set condition. How to modify erro mesage? costume validator
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 6 %32
+                options.nK (1,1) double = 32
                 options.nZ (1,1) double =  65   
                 options.shouldForceMonotonicDensity {mustBeNumericOrLogical} = 0
             end
@@ -141,7 +146,7 @@ classdef InternalGravityWaveSpectrum < handle
         self.GInitial = GInitial;
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
-        minOrder = floor(log10(2*pi/Kmax));
+        minOrder = 2; %floor(log10(2*pi/Kmax));
         if minOrder<=0
             minOrder=1;
         end
@@ -230,9 +235,10 @@ classdef InternalGravityWaveSpectrum < handle
         % 
         % % Step 1: Compute coeficients in 2D [nModes,nKLin]
 
-        HKEcoef = (1/4)*(1+ (f0^2./(self.omega.^2)));
+        HKEcoef = (1/4)*(1+ (f0^2./(self.omega.^2))); %must be at least 0.25
         VKEcoef= (1/4)* ((self.KRadialLog).^2 .* self.h.^2);        
         PEcoef =  (1/4)* (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);
+        
 
 
         % Step 2: Make the coeficients in 3D [nModes,nK,nZ]
@@ -258,9 +264,6 @@ classdef InternalGravityWaveSpectrum < handle
         % with the alternative Internal Wave Spectrum
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        % Should I define the function here or do something apart?
-        % for now I will past here and just adapt:
-
         j_star=3;
         slope=1;
         GMAmplitude =1;
@@ -270,23 +273,26 @@ classdef InternalGravityWaveSpectrum < handle
         invT_gm = 5.2e-3; % reference buoyancy frequency, radians/seconds
         E_gm = 6.3e-5; % non-dimensional energy parameter
         E_T = L_gm*L_gm*L_gm*invT_gm*invT_gm*E_gm*GMAmplitude;
+        self.E_T =E_T;
+
 
         % Compute the proper M normalization
         M = (j_star^2 +(1:1024).^2).^((-5/4));
         M_norm = sum(M);
       
-         %Create the energy matrix 2D 
-         totalEnergy = zeros(self.nModes,length(self.KRadialLog));        
+        %Create the energy matrix 2D 
+        totalEnergy = zeros(self.nModes,length(self.KRadialLog));        
 
 
 
         % Step 4.1: Distributing the energy %%%
-        for j=(1:self.nModes-1)    %I need to think better about the inds here!!!
+        for jind=(2:self.nModes)    %I need to think better about the inds here!!!
+            j=jind-1;
 
             for i=(1:length(self.KRadialLog)-1)            
 
                 %Defining LR                
-                LR= sqrt(self.g*self.h(j,i))/f0;
+                LR= sqrt(self.g*self.h(jind,i))/f0;
 
                 %Defining Bfunc and B_norm
                 fun = @(k) (1./(k.^2*LR^2 + 1).^(1*slope))*LR;
@@ -294,25 +300,28 @@ classdef InternalGravityWaveSpectrum < handle
 
                 % Integrate the energy btw 2 Kh
                 E = E_T*(integral(fun,self.KRadialLog(i),self.KRadialLog(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
-                totalEnergy(j,i) = E;     
+                totalEnergy(jind,i) = E;     
                 clear E
 
             end               
 
         end 
+       TE=totalEnergy;
+       A2D = sqrt((totalEnergy.*self.h)/4);
 
-       A2D = sqrt((totalEnergy./self.h)/2);
 
-       for i = 1:size(self.zNew,2)
-           TE(i,:,:)=totalEnergy;
+       for i = 1:size(self.zNew,2)           
            A(i,:,:)=A2D; 
        end
+
 
        self.A = A;
 
        N2atQuadPoints=self.N2(self.zNew);
 
-       HKE = self.A.^2.*self.HKEcoef.*self.F.^2;
+       self.N2atQuadPoints = N2atQuadPoints;
+
+       HKE = self.A.^2.*self.HKEcoef.*self.F.^2;       
        VKE = self.A.^2.*self.VKEcoef.*self.G.^2;
        PE= self.A.^2.*self.PEcoef.*self.G.^2.*N2atQuadPoints';
 
@@ -789,6 +798,10 @@ classdef InternalGravityWaveSpectrum < handle
             xlabel("log(KRadial)")
             legend("HKE","VKE","PE","TE" )
 
+            [X,Y]= ndgrid(zNew,KRadialLog);
+            [X2,Y2]= ndgrid(zPerModeLog,KRadialLog);
+
+            scatter3(X,Y,squeeze(DataInterpMat(:,3,:)))
             %%% KRadial needs to be evenly spaced.
             %%% Kmax related to 80% of the maximum stratification is very large 
             %%% (1.4 which generates a wavelength of 4m!!). 
@@ -851,17 +864,17 @@ classdef InternalGravityWaveSpectrum < handle
              %zLin
              ZVectorLin=reshape(repmat(zVectorNew,[1, length(KVectorNew)]),[],1);
             
-             %Klin
-             KVectorRepLin = reshape(permute(repmat(KVectorNew,[1 length(zVectorNew)]),[2 1]),[],1);
-             lambdaVectorLin= (2*pi)./KVectorRepLin;
+             %Klin    
+             lengthZ=length(zVectorNew);
+             %VectorRepNew =  reshape(repmat(self.KRadialLog,[self.nZ 1]),[],1);
+             KVectorRepNew = reshape(repmat(KVectorNew,[lengthZ 1]),[],1);
+             lambdaVectorNew= (2*pi)./KVectorRepNew;
 
              if size(data,3)>1
 
                  for i=1:length(verticalMode)
-
-
-                     %WHY IS THAT BEEN CALLED SO MANY TIMES?   
-                     DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorLin);
+                    
+                     DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorNew);
     
                      DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
                  end
@@ -869,9 +882,9 @@ classdef InternalGravityWaveSpectrum < handle
              else
 
                  for i=1:length(verticalMode)
-    
-                     DataInterp = SIModes(ZVectorLin, lambdaVectorLin);
-    
+
+                     DataInterp = SIModes(ZVectorLin, lambdaVectorNew);
+
                      DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
                  end
 
