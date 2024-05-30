@@ -12,7 +12,7 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
     % rt.Details{4,1}.DiagnosticRecord.Report
     %
     % import matlab.unittest.TestSuite
-    % suite = TestSuite.fromMethod(?TestIGWSInitialization, 'testEnergyCoeficients');
+    % suite = TestSuite.fromMethod(?TestIGWSInitialization, 'testInitWithLatitude');
     % result = run(suite)
 
     properties
@@ -79,8 +79,9 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
                     
                 end
             end
-
-            testCase.verifyEqual(squeeze(testCase.im.G(:,:,1)), G,"RelTol", 0.3)
+            
+            % Add both Abs and Rel Tol (10^3)
+            testCase.verifyEqual(squeeze(testCase.im.G(:,:,1).^2), G.^2,"AbsTol", 0.1)
 
         end
 
@@ -95,13 +96,15 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
         function testEnergyCoeficients(testCase)
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000);
             
+            %try integral of each mode at a time
+            %test the orthogonal condition
             HKEIntegral= trapz(testCase.im.zNew,testCase.im.HKEcoef.*testCase.im.F.^2,1);
             VKEIntegral= trapz(testCase.im.zNew,testCase.im.VKEcoef.*testCase.im.G.^2,1);
-            PEIntegral= trapz(testCase.im.zNew,testCase.im.PEcoef.*testCase.im.F.^2.*testCase.im.N2atQuadPoints',1);
+            PEIntegral= trapz(testCase.im.zNew,testCase.im.PEcoef.*testCase.im.G.^2.*testCase.im.N2atQuadPoints',1);
             allIntegral = HKEIntegral+VKEIntegral+PEIntegral;
             allIntegral=squeeze(allIntegral);
 
-            testCase.verifyEqual(allIntegral,testCase.im.h/4,"RelTol", 0.1)
+            testCase.verifyEqual(allIntegral,testCase.im.h/2,"RelTol", 0.1)
 
             figure(1)
             pcolor(allIntegral)
@@ -120,15 +123,15 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
             HKEIntegral= trapz(testCase.im.zNew,testCase.im.A.^2.*testCase.im.HKEcoef.*testCase.im.F.^2,1);
             VKEIntegral= trapz(testCase.im.zNew,testCase.im.A.^2.*testCase.im.VKEcoef.*testCase.im.G.^2,1);
-            PEIntegral= trapz(testCase.im.zNew,testCase.im.A.^2.*testCase.im.PEcoef.*testCase.im.F.^2.*testCase.im.N2atQuadPoints',1);
+            PEIntegral= trapz(testCase.im.zNew,testCase.im.A.^2.*testCase.im.PEcoef.*testCase.im.G.^2.*testCase.im.N2atQuadPoints',1);
             allIntegral = HKEIntegral+VKEIntegral+PEIntegral;
             allIntegral=squeeze(allIntegral);
 
             testCase.verifyEqual(allIntegral,testCase.im.TE,"AbsTol", 0.9)
 
-            figure(1)
+            figure(3)
             pcolor(allIntegral)
-            figure(2)
+            figure(4)
             pcolor(testCase.im.TE)
         end
 

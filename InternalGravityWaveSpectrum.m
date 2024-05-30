@@ -5,52 +5,42 @@ classdef InternalGravityWaveSpectrum < handle
         Lz % Depth of the ocean.
         N2 %function_handle
         g
+        shouldForceMonotonicDensity
+        N2max
+
+        nModes, nK, nZ
 
         KRadialLog  % size(k) = nK
-        KRadialLin
-        wavelengthLinear
 
         F  % size(F_k) = [nZ,nModes,nK]
         G  % size(G_k) = [nZ,nModes,nK]
         h  % size(h_k) = [nModes,nK]
         omega % size(omega_k) = [nK,nModes]       
-        zPerMode % [nZ,nModes]
-        N2max
-        FInitial % [nZ,nModes]
-        GInitial % [nZ,nModes]
-        zInitial % [nZ]
-        N2zInitial
-        test
-        delFuncAll
-
-        nModes, nK, nZ
+        zPerMode % [nZ,nModes]        
+        N2atQuadPoints
+                  
 
         HKEcoef, VKEcoef, PEcoef
 
-        HKE, VKE, PE, TE
-
-        
-        HKEatK, VKEatK, PEatK, TEatK
-
         A
 
-        zPerModeLog
+        HKE, VKE, PE, TE            
+
+
         zNew
 
-        shouldForceMonotonicDensity
-
-        %Proprieties for test:
-        E_T
-        N2atQuadPoints
-
-
-
-    end
-    
-    %properties (GetAccess = private) % I am tring to keep here the variables I want to use for Unit test proposes
         
-    %end
+    end
+        properties (Access = private, Hidden)
+            %Proprieties for test:
+            FInitial % [nZ,nModes]
+            GInitial % [nZ,nModes]
+            zInitial % [nZ]
+            N2zInitial
+            E_T        
+        end
 
+   
 
     methods
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -78,7 +68,6 @@ classdef InternalGravityWaveSpectrum < handle
                 error("Latitude:WrongValue","Latitude not valid")
             end
 
-
             
             self.N2=N2;  
             self.latitude=options.latitude;          
@@ -88,15 +77,6 @@ classdef InternalGravityWaveSpectrum < handle
             self.g=9.80665;
             self.Lz=Lz;
             self.shouldForceMonotonicDensity=options.shouldForceMonotonicDensity;
-            % 
-            % self.N2=N2Func;  
-            % self.latitude=latitude;          
-            % self.nModes=64;
-            % self.nK=10;
-            % self.nZ=65;
-            % self.g=9.80665;
-            % self.Lz=Lz;
-            % self.shouldForceMonotonicDensity=1;
             
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 1: Computation of min and max Kh based on the
@@ -112,9 +92,6 @@ classdef InternalGravityWaveSpectrum < handle
 
         % Step 1.2.1: define vertical vector (z) based on Lz
         % and nZ
-        
-             
-        %Lz = length, positive
 
         zInitial = linspace(-Lz,0,10001);
         N2zInitial= self.N2(zInitial);
@@ -136,9 +113,6 @@ classdef InternalGravityWaveSpectrum < handle
         im = InternalModesWKBSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zInitial,latitude=self.latitude,nModes=self.nModes);       
 
 
-        %Unit test: how to test if this modes were computed rigth?
-        %Unit test: plot FiK,GiK related with this mode
-
         [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.8*sqrt(N2max));
         Kmax= max(k);
 
@@ -151,16 +125,10 @@ classdef InternalGravityWaveSpectrum < handle
             minOrder=1;
         end
 
-       % KRadial equally spaced in log scale
+        % KRadial equally spaced in log scale
         wavelengthLog=logspace(minOrder,5,self.nK);     
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
-
-        % KRadial equally spaced in linear scale
-        %wavelengthLin=linspace(10^minOrder,10^5,10000);
-        %KRadialLin=fliplr(linspace((2*pi)./wavelengthLin(1),(2*pi)./wavelengthLin(end),10000))';        
-        %self.KRadialLin = KRadialLin; 
-
 
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%            
@@ -185,6 +153,7 @@ classdef InternalGravityWaveSpectrum < handle
             [FiK(:,:,iK),GiK(:,:,iK),hiK(:,iK),omegaiK(:,iK)] = im.ModesAtWavenumber(KRadialLog(iK)); %modes at quadrature points and not equally spaced
 
 
+
             %%%%%%%% IMPORTANT!!!!! %%%%%%%%%%%%%
 
             % the format for FiK and GiK is [depth (nZ), vertical modes (nModes), horiz wavenumber (nK)]
@@ -193,39 +162,13 @@ classdef InternalGravityWaveSpectrum < handle
 
 
         end
-        self.zPerModeLog =zPerModeLog;
-
-
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %             INTERPOLATION IN LINEAR SCALE              %
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-        % Step 1: Interp2 Quadrature points per K
-        % ndgrid
-
-
-        zNew = linspace(-Lz,0,501);
-        GLin=self.scatteredInterpolation(GiK,zNew,self.KRadialLog,(1:self.nModes));
-        FLin=self.scatteredInterpolation(FiK,zNew,self.KRadialLog,(1:self.nModes));
-        
-        %FOR TEST ONLY
-        % zNew = linspace(-Lz,0,501);
-        % GLin=scatteredInterpolation(self,GiK,zNew,KRadialLog,(1:nModes));
-        % FLin=scatteredInterpolation(self,FiK,zNew,KRadialLog,(1:nModes));
-       
-        hLin= interp2D(self,hiK,KRadialLog,(1:self.nModes));
-        omegaLin= interp2D(self,omegaiK,KRadialLog,(1:self.nModes));
-
-        % hLin= self.interp2D(hiK,self.KRadialLog,(1:self.nModes));
-        % omegaLin= self.interp2D(omegaiK,self.KRadialLog,(1:self.nModes));
-
-        %
-        self.zNew = zNew;
         self.zPerMode =zPerModeLog;
-        self.F = FLin;
-        self.G = GLin;
-        self.h = hLin;
-        self.omega = omegaLin;
+        self.F = FiK;
+        self.G = GiK;
+        self.h = hiK;
+        self.omega = omegaiK;        
+        self.zPerMode =zPerModeLog;
+
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 3: Computation of the energy coeficients based on 
@@ -235,30 +178,12 @@ classdef InternalGravityWaveSpectrum < handle
         % 
         % % Step 1: Compute coeficients in 2D [nModes,nKLin]
 
-        HKEcoef = (1/4)*(1+ (f0^2./(self.omega.^2))); %must be at least 0.25
-        VKEcoef= (1/4)* ((self.KRadialLog).^2 .* self.h.^2);        
-        PEcoef =  (1/4)* (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);
-        
+        self.HKEcoef = (1/4)*(1+ (f0^2./(self.omega.^2))); %must be at least 0.25
+        self.VKEcoef= (1/4)* ((self.KRadialLog).^2 .* self.h.^2);        
+        self.PEcoef =  (1/4)* (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);    
 
 
-        % Step 2: Make the coeficients in 3D [nModes,nK,nZ]
-        % (not necessary to create the 3D matriz if using write index on .* )
-        
-        % I MUST CHANGE THIS
-        for i = 1:size(self.G,1)
-             HKEcoef3D(i,:,:)=HKEcoef;
-             VKEcoef3D(i,:,:)=VKEcoef;
-             PEcoef3D(i,:,:)=PEcoef;
-        end
-
-        self.HKEcoef=HKEcoef3D;
-        self.VKEcoef=VKEcoef3D;
-        self.PEcoef=PEcoef3D;
-
-
-        %%%%%%% TEST!!!!! %%%%%%%%%%%
-
-
+        % Make a separate function
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 4: Computation of energy distribution according 
         % with the alternative Internal Wave Spectrum
@@ -279,7 +204,7 @@ classdef InternalGravityWaveSpectrum < handle
         % Compute the proper M normalization
         M = (j_star^2 +(1:1024).^2).^((-5/4));
         M_norm = sum(M);
-      
+
         %Create the energy matrix 2D 
         totalEnergy = zeros(self.nModes,length(self.KRadialLog));        
 
@@ -307,23 +232,24 @@ classdef InternalGravityWaveSpectrum < handle
 
         end 
        TE=totalEnergy;
-       A2D = sqrt((totalEnergy.*self.h)/4);
+       A2D = sqrt((totalEnergy.*self.h)/2);
 
 
-       for i = 1:size(self.zNew,2)           
+       for i = 1:self.nZ           
            A(i,:,:)=A2D; 
        end
 
 
        self.A = A;
 
-       N2atQuadPoints=self.N2(self.zNew);
+       N2atQuadPoints=self.N2(self.zPerMode);
 
        self.N2atQuadPoints = N2atQuadPoints;
 
-       HKE = self.A.^2.*self.HKEcoef.*self.F.^2;       
-       VKE = self.A.^2.*self.VKEcoef.*self.G.^2;
-       PE= self.A.^2.*self.PEcoef.*self.G.^2.*N2atQuadPoints';
+
+       HKE = self.A.^2.*shiftdim(self.HKEcoef,-1).*self.F.^2;       
+       VKE = self.A.^2.*shiftdim(self.VKEcoef,-1).*self.G.^2;
+       PE= self.A.^2.*shiftdim(self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
 
        self.HKE=HKE;
        self.VKE=VKE;
@@ -713,36 +639,36 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
         %%%%%%%%%%%%%%
-        function checkOrthogonalityAllModes(self)
-
-            arguments
-                self               
-            end   
-
-            for indK=1:length(self.KRadial)
-                disp(indK)    
-                N2atQuadPoints=self.N2(self.zPerMode(:,indK));
-                dz=gradient(self.zPerMode(:,indK));
-    
-                B=N2atQuadPoints.*self.G(:,:,indK).*dz;  
-                BT= transpose(self.G(:,:,indK));
-                
-                self.delFuncAll = (BT*B)./self.g;
-
-                isidentity=@(a,tol) all(abs(a-eye(size(a)))<tol);
-
-                tol=1; %I think this tolerance is too big
-
-                isOrthogonal=isidentity(self.delFuncAll,tol);
-                self.test=isOrthogonal;
-                
-                if sum(isOrthogonal)<self.nModes-1
-                   disp("Vetical structure G is not orthogonal")
-                   return                   
-                end    
-                 disp("Vetical structure G is orthogonal") 
-            end
-        end
+        % function checkOrthogonalityAllModes(self)
+        % 
+        %     arguments
+        %         self               
+        %     end   
+        % 
+        %     for indK=1:length(self.KRadial)
+        %         disp(indK)    
+        %         N2atQuadPoints=self.N2(self.zPerMode(:,indK));
+        %         dz=gradient(self.zPerMode(:,indK));
+        % 
+        %         B=N2atQuadPoints.*self.G(:,:,indK).*dz;  
+        %         BT= transpose(self.G(:,:,indK));
+        % 
+        %         self.delFuncAll = (BT*B)./self.g;
+        % 
+        %         isidentity=@(a,tol) all(abs(a-eye(size(a)))<tol);
+        % 
+        %         tol=1; %I think this tolerance is too big
+        % 
+        %         isOrthogonal=isidentity(self.delFuncAll,tol);
+        %         self.test=isOrthogonal;
+        % 
+        %         if sum(isOrthogonal)<self.nModes-1
+        %            disp("Vetical structure G is not orthogonal")
+        %            return                   
+        %         end    
+        %          disp("Vetical structure G is orthogonal") 
+        %     end
+        % end
 
         %%%%%%%%%%%%%%%%
         function plotQuadraturePoints(self,Mode)
@@ -752,69 +678,69 @@ classdef InternalGravityWaveSpectrum < handle
             end
         end
 
-        %%%%%%%%%
-        function checkEnergySum(self)
-            arguments
-                self                 
-            end
-
-            N2atQuadPoints=self.N2(self.zPerMode);
-
-            for i = 1:length(self.nModes)
-                N2atQuadPoints3D(:,i,:)=N2atQuadPoints;
-            end
-
-  
-           % Integrating in the vertical and summing over modes
-           % for each K, the vertical grid is different, so I am doing
-           % this computation in a loop, but probably there is a better way
-           
-           
-           for i = 1:length(self.KRadialLinear)
-                HKEatK(:,i)= trapz(self.zPerMode(:,i),self.HKE(:,:,i));
-                VKEatK(:,i)= trapz(self.zPerMode(:,i),self.VKE(:,:,i));
-                PEatK(:,i)= trapz(self.zPerMode(:,i),self.PE(:,:,i));
-           end
-
-            self.HKEatK =sum(HKEatK);
-            self.VKEatK =sum(VKEatK);
-            self.PEatK =sum(PEatK);
-            self.TEatK = sum(squeeze(self.A(1,:,:)).^2.*self.h)/2;
-
-            disp(["Total Energy: ",num2str(sum(self.TEatK)), "and the Total " + ...
-                "Energy by summation of Energy pieces is: ", num2str(sum(self.HKEatK+self.VKEatK+self.PEatK))])
-            
-            figure(2)
-            
-            loglog(self.KRadialLinear,self.HKEatK,LineWidth=1.5) 
-            hold on
-            loglog(self.KRadialLinear,self.VKEatK,LineWidth=1.5) 
-            loglog(self.KRadialLinear,self.PEatK,LineWidth=1.5) 
-            loglog(self.KRadialLinear,self.TEatK,LineWidth=1.5) 
-            xlim([min(self.KRadialLinear) max(self.KRadialLinear)])
-            %xticks(log10(2*pi./[1e5 1e4 1e3 1e2 1e1]))
-
-            ylabel('Energy')  
-            xlabel("log(KRadial)")
-            legend("HKE","VKE","PE","TE" )
-
-            [X,Y]= ndgrid(zNew,KRadialLog);
-            [X2,Y2]= ndgrid(zPerModeLog,KRadialLog);
-
-            scatter3(X,Y,squeeze(DataInterpMat(:,3,:)))
-            %%% KRadial needs to be evenly spaced.
-            %%% Kmax related to 80% of the maximum stratification is very large 
-            %%% (1.4 which generates a wavelength of 4m!!). 
-            %%% Equally spacing the vector from 0 to Kmax with 64 generates the following result:
-            
-            %%% L1=inf
-            % L2=473m
-            % All the wavelengths are small. How can this be resolved?
-            % - Decrease Kmax?
-            % - Increase the number of points?
-
-
-        end
+        % %%%%%%%%%
+        % function checkEnergySum(self)
+        %     arguments
+        %         self                 
+        %     end
+        % 
+        %     N2atQuadPoints=self.N2(self.zPerMode);
+        % 
+        %     for i = 1:length(self.nModes)
+        %         N2atQuadPoints3D(:,i,:)=N2atQuadPoints;
+        %     end
+        % 
+        % 
+        %    % Integrating in the vertical and summing over modes
+        %    % for each K, the vertical grid is different, so I am doing
+        %    % this computation in a loop, but probably there is a better way
+        % 
+        % 
+        %    for i = 1:length(self.KRadialLinear)
+        %         HKEatK(:,i)= trapz(self.zPerMode(:,i),self.HKE(:,:,i));
+        %         VKEatK(:,i)= trapz(self.zPerMode(:,i),self.VKE(:,:,i));
+        %         PEatK(:,i)= trapz(self.zPerMode(:,i),self.PE(:,:,i));
+        %    end
+        % 
+        %     self.HKEatK =sum(HKEatK);
+        %     self.VKEatK =sum(VKEatK);
+        %     self.PEatK =sum(PEatK);
+        %     self.TEatK = sum(squeeze(self.A(1,:,:)).^2.*self.h)/2;
+        % 
+        %     disp(["Total Energy: ",num2str(sum(self.TEatK)), "and the Total " + ...
+        %         "Energy by summation of Energy pieces is: ", num2str(sum(self.HKEatK+self.VKEatK+self.PEatK))])
+        % 
+        %     figure(2)
+        % 
+        %     loglog(self.KRadialLinear,self.HKEatK,LineWidth=1.5) 
+        %     hold on
+        %     loglog(self.KRadialLinear,self.VKEatK,LineWidth=1.5) 
+        %     loglog(self.KRadialLinear,self.PEatK,LineWidth=1.5) 
+        %     loglog(self.KRadialLinear,self.TEatK,LineWidth=1.5) 
+        %     xlim([min(self.KRadialLinear) max(self.KRadialLinear)])
+        %     %xticks(log10(2*pi./[1e5 1e4 1e3 1e2 1e1]))
+        % 
+        %     ylabel('Energy')  
+        %     xlabel("log(KRadial)")
+        %     legend("HKE","VKE","PE","TE" )
+        % 
+        %     [X,Y]= ndgrid(zNew,KRadialLog);
+        %     [X2,Y2]= ndgrid(zPerModeLog,KRadialLog);
+        % 
+        %     scatter3(X,Y,squeeze(DataInterpMat(:,3,:)))
+        %     %%% KRadial needs to be evenly spaced.
+        %     %%% Kmax related to 80% of the maximum stratification is very large 
+        %     %%% (1.4 which generates a wavelength of 4m!!). 
+        %     %%% Equally spacing the vector from 0 to Kmax with 64 generates the following result:
+        % 
+        %     %%% L1=inf
+        %     % L2=473m
+        %     % All the wavelengths are small. How can this be resolved?
+        %     % - Decrease Kmax?
+        %     % - Increase the number of points?
+        % 
+        % 
+        % end
 
          %%%%%%%%%
          function SIModes = initScatteredInterpolant(self,data)
@@ -914,8 +840,7 @@ classdef InternalGravityWaveSpectrum < handle
 
          end
 
-
-    end
+end
 
     
 
