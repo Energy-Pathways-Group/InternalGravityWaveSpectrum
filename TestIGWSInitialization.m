@@ -62,6 +62,142 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
         function testValidationWithInvalidInput(testCase)
             testCase.verifyError(@()InternalGravityWaveSpectrum(@(z) randn(size(z))*5.2e-3,4000,shouldForceMonotonicDensity=1), 'MATLAB:expectedIncreasing');
         end
+        
+        %%%%%%%%%%%%%%% Test orthogonality First Condition %%%%%%%%%%%%%%%%  
+        function testOrthogonalityFirstCond(testCase)
+            D=4000;
+            testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
+
+                        
+            %Creating Gi*Gj Matrix
+            %orthogonalMatrix = zeros(testCase.im.nZ,size, size);           
+
+            for indK= 1:testCase.im.nK
+                for indZ = 1:testCase.im.nZ
+
+                    slice = squeeze(testCase.im.G(indZ, :,indK));
+                    A= slice(:);
+                    B=A';
+                    allProductMatrix(:,:,indZ)= A*B;
+                end
+                for n=1:64
+                    for m=1:64
+                        orthogonalMatrix(n,m,indK)=trapz(testCase.im.zPerMode(:,indK),(testCase.im.N2(testCase.im.zPerMode(:,indK)) - testCase.im.f0^2) .* allProductMatrix(n,m,:));
+            
+                    end
+                end
+            end
+
+            %Creating expected Matrix     
+            row=size(orthogonalMatrix,1);
+            col=size(orthogonalMatrix,2);
+
+            for indK= 1:testCase.im.nK
+                expectedMatrix(:,:, indK) = eye(row, col);    
+            end
+            expectedMatrix = expectedMatrix*9.8;
+            expectedMatrix(64,64,:)=0;
+            
+
+            %Testing
+            testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.1)
+        end
+
+
+        %%%%%%%%%%%%%%% Test orthogonality Second Condition %%%%%%%%%%%%%%%%   
+     
+        function testOrthogonalitySecondCond(testCase)
+            D=4000;
+            testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
+
+                        
+            %Creating Gi*Gj, hihj, FiFj Matrices
+                      
+            clear A B
+            for indK= 1:testCase.im.nK
+                for indZ = 1:testCase.im.nZ
+
+                    sliceG = squeeze(testCase.im.G(indZ, :,indK));
+                    A= sliceG(:);
+                    B=A';
+                    allProductMatrixG(:,:,indZ)= A*B;
+
+                    clear A B
+
+                    sliceF = squeeze(testCase.im.G(indZ, :,indK));
+                    A= sliceF(:);
+                    B=A';
+                    allProductMatrixF(:,:,indZ)= A*B;
+
+                    clear A B
+                end
+
+                sliceh = squeeze(testCase.im.h(:,indK));
+                A= sliceh(:);
+                B=A';
+                allProductMatrixh(:,:,indK)= A*B;
+
+                                
+                for n=1:64
+                    for m=1:64
+                        integrand= allProductMatrixF(n,m,:) + allProductMatrixh(n,m,indK)*testCase.im.KRadialLog(indK)*allProductMatrixG(n,m,:);
+
+                        orthogonalMatrix(n,m,indK)=trapz(testCase.im.zPerMode(:,indK), integrand);
+            
+                    end
+                end
+
+                %Creating expected Matrix     
+                row=size(orthogonalMatrix,1);
+                col=size(orthogonalMatrix,2);
+                
+                expectedMatrix= zeros(size(orthogonalMatrix));
+
+                for indK= 1:testCase.im.nK
+                    for i=1:min(row,col)
+                        expectedMatrix(i,i, indK) = testCase.im.h(i,indK);
+                    end
+                end
+
+                expectedMatrix(64,64,:)=0;
+                
+                end
+
+            %Creating expected Matrix     
+            row=size(orthogonalMatrix,1);
+            col=size(orthogonalMatrix,2);
+
+            for indK= 1:testCase.im.nK
+                expectedMatrix(:,:, indK) = eye(row, col);    
+            end
+            expectedMatrix(64,64,:)=0;
+            
+
+            %Testing
+            testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.1)
+        end
+        %%%%%%%%%%%%%%%  Test orthogonality 2 %%%%%%%%%%%%%%%%%%%%%%%%%%
+        % NO ENERGY IN THE LAST MODE? 
+        %
+        function testOrthogonalityFirstCondSimple(testCase)
+            Depth=4000;
+            testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,Depth);
+
+            expectedMatrix = ones(testCase.im.nModes-1,testCase.im.nK)*9.8;
+
+            orthogonalMatrix=zeros(testCase.im.nModes-1,testCase.im.nK);
+            for indk = 1:testCase.im.nK
+                for indj =1:testCase.im.nModes -1
+    
+                orthogonalMatrix(indj,indk)=trapz(testCase.im.zPerMode(:,indk),(testCase.im.N2(testCase.im.zPerMode(:,indk)) - testCase.im.f0^2) .* testCase.im.G(:,indj,indk).^2,1);
+                end
+            end
+
+           testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.1)
+
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         % Test Vertical Bases
         function testVerticalBases(testCase)
@@ -82,6 +218,7 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             
             % Add both Abs and Rel Tol (10^3)
             testCase.verifyEqual(squeeze(testCase.im.G(:,:,1).^2), G.^2,"AbsTol", 0.1)
+            % considering two error tolerance
 
         end
 
@@ -92,6 +229,8 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000);
             testCase.verifyEqual(sum(testCase.im.TE(:)), testCase.im.E_T(:),"AbsTol", 0.3)
         end
+
+
 
         function testEnergyCoeficients(testCase)
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000);
@@ -139,6 +278,7 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
 
 
-    end
+ end
+end
 
    

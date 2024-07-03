@@ -249,11 +249,11 @@ classdef InternalGravityWaveSpectrum < handle
 
        HKE = self.A.^2.*shiftdim(self.HKEcoef,-1).*self.F.^2;       
        VKE = self.A.^2.*shiftdim(self.VKEcoef,-1).*self.G.^2;
-       PE= self.A.^2.*shiftdim(self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
+       %PE= self.A.^2.*shiftdim(self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
 
        self.HKE=HKE;
        self.VKE=VKE;
-       self.PE=PE;
+       %self.PE=PE;
        self.TE=TE;
 
       end
