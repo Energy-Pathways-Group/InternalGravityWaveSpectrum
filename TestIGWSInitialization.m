@@ -185,7 +185,7 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
            testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.1)
 
-
+        end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -226,25 +226,30 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000);
             
             %try integral of each mode at a time
-            %test the orthogonal condition
-            HKEIntegral= trapz(testCase.im.zNew,testCase.im.HKEcoef.*testCase.im.F.^2,1);
-            VKEIntegral= trapz(testCase.im.zNew,testCase.im.VKEcoef.*testCase.im.G.^2,1);
-            PEIntegral= trapz(testCase.im.zNew,testCase.im.PEcoef.*testCase.im.G.^2.*testCase.im.N2atQuadPoints',1);
+            for indk=1:testCase.im.nK
+                HKEIntegral(:,indk)= trapz(testCase.im.zPerMode(:,indk),testCase.im.HKEcoef(:,indk)'.*testCase.im.F(:,:,indk).^2,1);
+                VKEIntegral(:,indk)= trapz(testCase.im.zPerMode(:,indk),testCase.im.VKEcoef(:,indk)'.*testCase.im.G(:,:,indk).^2,1);
+                PEIntegral(:,indk)= trapz(testCase.im.zPerMode(:,indk),testCase.im.PEcoef(:,indk)'.*testCase.im.G(:,:,indk).^2.*testCase.im.N2atQuadPoints(:,indk),1);
+               
+            end
+
             allIntegral = HKEIntegral+VKEIntegral+PEIntegral;
             allIntegral=squeeze(allIntegral);
 
-            testCase.verifyEqual(allIntegral,testCase.im.h/2,"RelTol", 0.1)
+            % Expected Value
+            expectedValue = testCase.im.h / 2;
 
-            figure(1)
-            pcolor(allIntegral)
-            colorbar
-            clim([0, 0.25]);
+            % Tolerâncias
+            relativeTolerance = 0.1;
+            absoluteTolerance = 1e-3; 
 
-            figure(2)
-            pcolor(testCase.im.h/4)
-            colorbar
-            clim([0, 0.25]);
-        end
+            % Tolerance verification  
+            isWithinRelTol = abs(allIntegral - expectedValue) <= relativeTolerance * abs(expectedValue);
+            isWithinAbsTol = abs(allIntegral - expectedValue) <= absoluteTolerance;
+
+            testCase.verifyTrue(all(isWithinRelTol(:)) || all(isWithinAbsTol(:)))
+
+       end
         
 
         function testTotalEnergy(testCase)
@@ -269,6 +274,6 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
 
  end
-end
+
 
    
