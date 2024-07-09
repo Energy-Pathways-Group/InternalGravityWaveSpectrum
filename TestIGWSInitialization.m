@@ -239,15 +239,23 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             % Expected Value
             expectedValue = testCase.im.h / 2;
 
-            % Tolerâncias
-            relativeTolerance = 0.1;
-            absoluteTolerance = 1e-3; 
+            % Tolerences
+            relativeTolerance = 0.05;
+            absoluteTolerance = 1e-4; 
 
             % Tolerance verification  
             isWithinRelTol = abs(allIntegral - expectedValue) <= relativeTolerance * abs(expectedValue);
             isWithinAbsTol = abs(allIntegral - expectedValue) <= absoluteTolerance;
 
-            testCase.verifyTrue(all(isWithinRelTol(:)) || all(isWithinAbsTol(:)))
+            % old
+            %testCase.verifyTrue(all(isWithinRelTol(:)) || all(isWithinAbsTol(:)))
+            
+            % new
+            testCase.verifyTrue(all(isWithinRelTol(:) | isWithinAbsTol(:)))
+
+            % PLOT!
+
+            %all around OR; should use ANY?
 
        end
         
