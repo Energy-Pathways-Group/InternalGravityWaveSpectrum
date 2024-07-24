@@ -9,8 +9,9 @@ classdef InternalGravityWaveSpectrum < handle
         N2max
 
         nModes, nK, nZ
-
+        
         KRadialLog  % size(k) = nK
+        j
 
         F  % size(F_k) = [nZ,nModes,nK]
         G  % size(G_k) = [nZ,nModes,nK]
@@ -18,11 +19,12 @@ classdef InternalGravityWaveSpectrum < handle
         omega % size(omega_k) = [nK,nModes]       
         zPerMode % [nZ,nModes]        
         N2atQuadPoints
+        Lr2
                   
 
         HKEcoef, VKEcoef, PEcoef
 
-        A
+        Am, Ap, A2
 
         HKE, VKE, PE, TE            
 
@@ -67,6 +69,7 @@ classdef InternalGravityWaveSpectrum < handle
             elseif options.latitude >= 85 || options.latitude <= -85
                 error("Latitude:WrongValue","Latitude not valid")
             end
+            
 
             
             self.N2=N2;  
@@ -77,7 +80,8 @@ classdef InternalGravityWaveSpectrum < handle
             self.g=9.80665;
             self.Lz=Lz;
             self.shouldForceMonotonicDensity=options.shouldForceMonotonicDensity;
-            
+            self.j=0:self.nModes-1;
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 1: Computation of min and max Kh based on the
         % stratification and latitude
@@ -192,69 +196,67 @@ classdef InternalGravityWaveSpectrum < handle
         j_star=3;
         slope=1;
         GMAmplitude =1;
-
-        % GM Parameters. We will use the same??           
+        
+        % GM Parameters. 
         L_gm = 1.3e3; % thermocline exponential scale, meters
         invT_gm = 5.2e-3; % reference buoyancy frequency, radians/seconds
         E_gm = 6.3e-5; % non-dimensional energy parameter
         E_T = L_gm*L_gm*L_gm*invT_gm*invT_gm*E_gm*GMAmplitude;
         self.E_T =E_T;
 
+        %RIGTH NORMALIZATION DELTA K AND DELTA J
+        % Compute the proper vertical function normalization
+        M = @(j) (j_star.^2 +(j).^2).^((-5/4));
+        M_norm = sum(M(1:1024));
+        M= @(j) ((j_star.^2 +(j).^2).^((-5/4)))/M_norm;
 
-        % Compute the proper M normalization
-        M = (j_star^2 +(1:1024).^2).^((-5/4));
-        M_norm = sum(M);
+        % sanity check to confirm this is 1
+        %sum(M(1:1024)) 
 
-        %Create the energy matrix 2D 
-        totalEnergy = zeros(self.nModes,length(self.KRadialLog));        
+        %Compute Rossby radius of deformation
+        Lr2 = (self.g.*self.h)/self.f0*self.f0;
+        self.Lr2 = Lr2;
 
+        % Define the anonymous function B(k,j)
+        B = @(k, j) (1./(k.^2.* self.Lr2(j+1) + 1).^(1 * slope)).*sqrt(self.Lr2(j+1));
+        
 
+        % Define the 1D matrix B_norm that integrates B with respect to k
+        % Use the exact value for upper limit K
+        B_norm = ones(self.nModes,1);
+        for jind=(2:self.nModes)                
+            B_norm(jind) = integral(@(k) B(k, self.j(jind)), 0, 1);
+        end
 
-        % Step 4.1: Distributing the energy %%%
-        for jind=(2:self.nModes)    %I need to think better about the inds here!!!
-            j=jind-1;
+        % Redefine the anonymous function B(k,j)
+        B = @(k, j) (1./(k.^2.* self.Lr2(j+1) + 1).^(1 * slope)).*sqrt(self.Lr2(j+1))/B_norm(j+1);
 
-            for i=(1:length(self.KRadialLog)-1)            
+        % Sanity check to confirm that the integrals are now normalized
+        % for jind=(1:self.nModes-1)                
+        %      integral(@(k) B(k, self.j(jind)), 0, 1)
+        % end
 
-                %Defining LR                
-                LR= sqrt(self.g*self.h(jind,i))/f0;
+        % Definir a função model_spectrum
+        model_spectrum = @(k, j) (E_T) * B(k, j) * M(j);
+        
+        % Compute Am and Ap
+        TE = amplitudesWithSpectrum(self,model_spectrum);
 
-                %Defining Bfunc and B_norm
-                fun = @(k) (1./(k.^2*LR^2 + 1).^(1*slope))*LR;
-                B_norm = integral(fun,self.KRadialLog(1),self.KRadialLog(end));
+        self.A2 = TE*2./self.h;
 
-                % Integrate the energy btw 2 Kh
-                E = E_T*(integral(fun,self.KRadialLog(i),self.KRadialLog(i+1))/B_norm)*(((j^2 + j_star^2).^((-5/4)))/M_norm);
-                totalEnergy(jind,i) = E;     
-                clear E
-
-            end               
-
-        end 
-       TE=totalEnergy;
-       A2D = sqrt((totalEnergy.*self.h)/2);
-
-
-       for i = 1:self.nZ           
-           A(i,:,:)=A2D; 
-       end
-
-
-       self.A = A;
-
-       N2atQuadPoints=self.N2(self.zPerMode);
-
-       self.N2atQuadPoints = N2atQuadPoints;
+        
+        N2atQuadPoints=self.N2(self.zPerMode);
 
 
-       HKE = self.A.^2.*shiftdim(self.HKEcoef,-1).*self.F.^2;       
-       VKE = self.A.^2.*shiftdim(self.VKEcoef,-1).*self.G.^2;
-       %PE= self.A.^2.*shiftdim(self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
-
-       self.HKE=HKE;
-       self.VKE=VKE;
-       %self.PE=PE;
-       self.TE=TE;
+        HKE = shiftdim(self.A2.*self.HKEcoef,-1).*self.F.^2;       
+        VKE = shiftdim(self.A2.*self.VKEcoef,-1).*self.G.^2;
+        PE= shiftdim(self.A2.*self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
+        
+        self.HKE=HKE;
+        self.VKE=VKE;
+        self.PE=PE;       
+        self.TE=TE;
+        self.N2atQuadPoints=N2atQuadPoints;
 
       end
 

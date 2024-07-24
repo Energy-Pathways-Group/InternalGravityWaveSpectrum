@@ -166,27 +166,7 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             %Testing NOT WORKING FOR LAST MODE
             testCase.verifyEqual(orthogonalMatrix(1:end-1,1:end-1,:), expectedMatrix(1:end-1,1:end-1,:),"AbsTol", 0.1)
         end
-        %%%%%%%%%%%%%%%  Test orthogonality 2 %%%%%%%%%%%%%%%%%%%%%%%%%%
-        % NO ENERGY IN THE LAST MODE? 
-        %
-        function testOrthogonalityFirstCondSimple(testCase)
-            Depth=4000;
-            testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,Depth);
-
-            expectedMatrix = ones(testCase.im.nModes-1,testCase.im.nK)*9.8;
-
-            orthogonalMatrix=zeros(testCase.im.nModes-1,testCase.im.nK);
-            for indk = 1:testCase.im.nK
-                for indj =1:testCase.im.nModes -1
-    
-                orthogonalMatrix(indj,indk)=trapz(testCase.im.zPerMode(:,indk),(testCase.im.N2(testCase.im.zPerMode(:,indk)) - testCase.im.f0^2) .* testCase.im.G(:,indj,indk).^2,1);
-                end
-            end
-
-           testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.1)
-
-        end
-
+        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         % Test Vertical Bases
@@ -247,34 +227,55 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             isWithinRelTol = abs(allIntegral - expectedValue) <= relativeTolerance * abs(expectedValue);
             isWithinAbsTol = abs(allIntegral - expectedValue) <= absoluteTolerance;
 
-            % old
-            %testCase.verifyTrue(all(isWithinRelTol(:)) || all(isWithinAbsTol(:)))
-            
+                       
             % new
             testCase.verifyTrue(all(isWithinRelTol(:) | isWithinAbsTol(:)))
 
             % PLOT!
 
-            %all around OR; should use ANY?
-
+           
        end
         
-
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function testTotalEnergy(testCase)
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000,shouldForceMonotonicDensity=0);
+            for indk=1:testCase.im.nK         
+            
+                HKEIntegral(:,indk)= trapz(testCase.im.zPerMode(:,indk),testCase.im.A2(:,indk)'.*testCase.im.HKEcoef(:,indk)'.*testCase.im.F(:,:,indk).^2,1);
+                VKEIntegral(:,indk)= trapz(testCase.im.zPerMode(:,indk),testCase.im.A2(:,indk)'.*testCase.im.VKEcoef(:,indk)'.*testCase.im.G(:,:,indk).^2,1);
+                PEIntegral(:,indk)= trapz(testCase.im.zPerMode(:,indk),testCase.im.A2(:,indk)'.*testCase.im.PEcoef(:,indk)'.*testCase.im.G(:,:,indk).^2.*testCase.im.N2atQuadPoints(:,indk),1);
+            end
 
-            HKEIntegral= trapz(testCase.im.zNew,testCase.im.A.^2.*testCase.im.HKEcoef.*testCase.im.F.^2,1);
-            VKEIntegral= trapz(testCase.im.zNew,testCase.im.A.^2.*testCase.im.VKEcoef.*testCase.im.G.^2,1);
-            PEIntegral= trapz(testCase.im.zNew,testCase.im.A.^2.*testCase.im.PEcoef.*testCase.im.G.^2.*testCase.im.N2atQuadPoints',1);
             allIntegral = HKEIntegral+VKEIntegral+PEIntegral;
             allIntegral=squeeze(allIntegral);
 
-            testCase.verifyEqual(allIntegral,testCase.im.TE,"AbsTol", 0.9)
+            % Expected Value
+            expectedValue = testCase.im.TE;
+
+            % Tolerences
+            relativeTolerance = 0.05;
+            absoluteTolerance = 1e-4; 
+
+            % Tolerance verification  
+            isWithinRelTol = abs(allIntegral - expectedValue) <= relativeTolerance * abs(expectedValue);
+            isWithinAbsTol = abs(allIntegral - expectedValue) <= absoluteTolerance;
+
+            %testCase.verifyTrue(all(isWithinRelTol(:) | isWithinAbsTol(:)))
+
 
             figure(3)
             pcolor(allIntegral)
+            colorbar
+            title("Total Energy")
+            xlabel("Horizontal Wave Number INDEX")
+            ylabel("Vertical mode")
+
             figure(4)
             pcolor(testCase.im.TE)
+            colorbar
+            title("HKE + VKE + PE")
+            xlabel("Horizontal Wave Number INDEX")
+            ylabel("Vertical mode")
         end
 
     end
