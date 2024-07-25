@@ -264,14 +264,14 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
 
             figure(3)
-            pcolor(allIntegral)
+            pcolor(log(allIntegral))
             colorbar
             title("Total Energy")
             xlabel("Horizontal Wave Number INDEX")
             ylabel("Vertical mode")
 
             figure(4)
-            pcolor(testCase.im.TE)
+            pcolor(log(testCase.im.TE))
             colorbar
             title("HKE + VKE + PE")
             xlabel("Horizontal Wave Number INDEX")

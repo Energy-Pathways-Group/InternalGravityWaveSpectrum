@@ -31,7 +31,7 @@ function [totalEnergyPerComponent] = amplitudesWithSpectrum(self,spectrum)
                     dk = upperBound - lowerBound;
 
                     % Integral direta
-                    integralValue = integral(@(k) spectrum(k, self.j(iJ)), lowerBound, upperBound)/dk;
+                    integralValue = integral(@(k) spectrum(k, self.j(iJ)).*k, lowerBound, upperBound)/log(dk);
                     totalEnergyPerComponent(iJ, iK) = integralValue;                    
                     
                 end
