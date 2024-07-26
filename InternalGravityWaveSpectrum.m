@@ -21,6 +21,7 @@ classdef InternalGravityWaveSpectrum < handle
         N2atQuadPoints
         Lr2
                   
+        E_T 
 
         HKEcoef, VKEcoef, PEcoef
 
@@ -39,7 +40,7 @@ classdef InternalGravityWaveSpectrum < handle
             GInitial % [nZ,nModes]
             zInitial % [nZ]
             N2zInitial
-            E_T        
+                   
         end
 
    
@@ -80,7 +81,7 @@ classdef InternalGravityWaveSpectrum < handle
             self.g=9.80665;
             self.Lz=Lz;
             self.shouldForceMonotonicDensity=options.shouldForceMonotonicDensity;
-            self.j=0:self.nModes-1;
+            self.j=1:self.nModes;
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 1: Computation of min and max Kh based on the
@@ -214,22 +215,22 @@ classdef InternalGravityWaveSpectrum < handle
         %sum(M(1:1024)) 
 
         %Compute Rossby radius of deformation
-        Lr2 = (self.g.*self.h)/self.f0*self.f0;
+        Lr2 = (self.g.*self.h)/(self.f0*self.f0);
         self.Lr2 = Lr2;
 
         % Define the anonymous function B(k,j)
-        B = @(k, j) (1./(k.^2.* self.Lr2(j+1) + 1).^(1 * slope)).*sqrt(self.Lr2(j+1));
+        B = @(k, indj) (1./(k.^2.* self.Lr2(indj) + 1).^(1 * slope)).*sqrt(self.Lr2(indj));
         
 
         % Define the 1D matrix B_norm that integrates B with respect to k
         % Use the exact value for upper limit K
         B_norm = ones(self.nModes,1);
-        for jind=(2:self.nModes)                
-            B_norm(jind) = integral(@(k) B(k, self.j(jind)), 0, 1);
+        for jind=(1:length(self.j))                
+            B_norm(jind) = integral(@(k) B(k, self.j(jind)), 0, self.KRadialLog(end));
         end
 
         % Redefine the anonymous function B(k,j)
-        B = @(k, j) (1./(k.^2.* self.Lr2(j+1) + 1).^(1 * slope)).*sqrt(self.Lr2(j+1))/B_norm(j+1);
+        B = @(k, jind) (1./(k.^2.* self.Lr2(jind) + 1).^(1 * slope)).*sqrt(self.Lr2(jind))/B_norm(jind);
 
         % Sanity check to confirm that the integrals are now normalized
         % for jind=(1:self.nModes-1)                

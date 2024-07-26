@@ -197,7 +197,7 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
         % Test Energy
         function testDistributionAlternativeSpectrum(testCase)
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000);
-            testCase.verifyEqual(sum(testCase.im.TE(:)), testCase.im.E_T(:),"AbsTol", 0.3)
+            testCase.verifyEqual(sum(testCase.im.TE(:)), testCase.im.E_T(:),"AbsTol", 0.05)
         end
 
 
