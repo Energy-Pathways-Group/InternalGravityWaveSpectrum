@@ -247,11 +247,16 @@ classdef InternalGravityWaveSpectrum < handle
 
         
         N2atQuadPoints=self.N2(self.zPerMode);
-
-
+        
         HKE = shiftdim(self.A2.*self.HKEcoef,-1).*self.F.^2;       
         VKE = shiftdim(self.A2.*self.VKEcoef,-1).*self.G.^2;
-        PE= shiftdim(self.A2.*self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
+
+        if isscalar(N2atQuadPoints)
+            PE= shiftdim(self.A2.*self.PEcoef,-1).*self.G.^2.*N2atQuadPoints;
+        else
+            PE= shiftdim(self.A2.*self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
+        end
+        
         
         self.HKE=HKE;
         self.VKE=VKE;
@@ -550,11 +555,14 @@ classdef InternalGravityWaveSpectrum < handle
                 
             end
         end
-
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
+        % Interpolation        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %
-        % Tests
-        %
+
+
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
+        % Other Usefull Tools        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
             function plotStratifcationHighMode(self)
@@ -582,96 +590,7 @@ classdef InternalGravityWaveSpectrum < handle
             end
 
 
-        %%%%%%%%%%%
-
-
-        function checkOrthogonalityPlot(self)
-            arguments
-                self               
-            end 
-
-            N2atQuadPoints=self.N2(self.zPerMode(:,2));
-            self.g=9.80665;
-
-            figure()
-            subplot(1,3,1)
-            suptitle('Orthogonality Check Same Mode')
-
-            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)            
-            ylabel('depth')  
-            ylim([-1000 0])
-            title('G_{j=2}')
-
-            subplot(1,3,2)
-            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)         
-            title('G_{j=2}')          
-            ylim([-1000 0])
-
-            subplot(1,3,3)
-            plot((N2atQuadPoints.*self.G(:,2,2).*self.G(:,2,2)),self.zPerMode(:,2),'k',LineWidth=1.5)           
-            title('N_2G_{j=2}G_{j=2}')
-            ylim([-1000 0])
-          
-            
-            
-            delFuncSameMode = trapz(self.zPerMode(:,2),N2atQuadPoints.*self.G(:,2,2).*self.G(:,2,2),1);
-            disp(['delFunc= ', num2str(delFuncSameMode/self.g)])
-            
-            figure()
-            subplot(1,3,1)
-            suptitle('Orthogonality Check Diff Mode')
-
-            plot(self.G(:,2,2),self.zPerMode(:,2),'k',LineWidth=1.5)            
-            ylabel('depth')  
-            ylim([-1000 0])
-            title('G_{j=2}')
-
-            subplot(1,3,2)
-            plot(self.G(:,3,2),self.zPerMode(:,2),'k',LineWidth=1.5)         
-            title('G_{j=3}')          
-            ylim([-1000 0])
-
-            subplot(1,3,3)
-            plot((N2atQuadPoints.*self.G(:,3,2).*self.G(:,2,2)),self.zPerMode(:,2),'k',LineWidth=1.5)           
-            title('N_2G_{j=2}G_{j=3}')
-            ylim([-1000 0])
-          
-
-            delFuncDiffMode = trapz(self.zPerMode(:,2),N2atQuadPoints.*self.G(:,3,2).*self.G(:,2,2),1);
-            disp(['delFunc= ', num2str(delFuncDiffMode/self.g)])
-        end
-
-        %%%%%%%%%%%%%%
-        % function checkOrthogonalityAllModes(self)
-        % 
-        %     arguments
-        %         self               
-        %     end   
-        % 
-        %     for indK=1:length(self.KRadial)
-        %         disp(indK)    
-        %         N2atQuadPoints=self.N2(self.zPerMode(:,indK));
-        %         dz=gradient(self.zPerMode(:,indK));
-        % 
-        %         B=N2atQuadPoints.*self.G(:,:,indK).*dz;  
-        %         BT= transpose(self.G(:,:,indK));
-        % 
-        %         self.delFuncAll = (BT*B)./self.g;
-        % 
-        %         isidentity=@(a,tol) all(abs(a-eye(size(a)))<tol);
-        % 
-        %         tol=1; %I think this tolerance is too big
-        % 
-        %         isOrthogonal=isidentity(self.delFuncAll,tol);
-        %         self.test=isOrthogonal;
-        % 
-        %         if sum(isOrthogonal)<self.nModes-1
-        %            disp("Vetical structure G is not orthogonal")
-        %            return                   
-        %         end    
-        %          disp("Vetical structure G is orthogonal") 
-        %     end
-        % end
+        
 
         %%%%%%%%%%%%%%%%
         function plotQuadraturePoints(self,Mode)
@@ -681,71 +600,7 @@ classdef InternalGravityWaveSpectrum < handle
             end
         end
 
-        % %%%%%%%%%
-        % function checkEnergySum(self)
-        %     arguments
-        %         self                 
-        %     end
-        % 
-        %     N2atQuadPoints=self.N2(self.zPerMode);
-        % 
-        %     for i = 1:length(self.nModes)
-        %         N2atQuadPoints3D(:,i,:)=N2atQuadPoints;
-        %     end
-        % 
-        % 
-        %    % Integrating in the vertical and summing over modes
-        %    % for each K, the vertical grid is different, so I am doing
-        %    % this computation in a loop, but probably there is a better way
-        % 
-        % 
-        %    for i = 1:length(self.KRadialLinear)
-        %         HKEatK(:,i)= trapz(self.zPerMode(:,i),self.HKE(:,:,i));
-        %         VKEatK(:,i)= trapz(self.zPerMode(:,i),self.VKE(:,:,i));
-        %         PEatK(:,i)= trapz(self.zPerMode(:,i),self.PE(:,:,i));
-        %    end
-        % 
-        %     self.HKEatK =sum(HKEatK);
-        %     self.VKEatK =sum(VKEatK);
-        %     self.PEatK =sum(PEatK);
-        %     self.TEatK = sum(squeeze(self.A(1,:,:)).^2.*self.h)/2;
-        % 
-        %     disp(["Total Energy: ",num2str(sum(self.TEatK)), "and the Total " + ...
-        %         "Energy by summation of Energy pieces is: ", num2str(sum(self.HKEatK+self.VKEatK+self.PEatK))])
-        % 
-        %     figure(2)
-        % 
-        %     loglog(self.KRadialLinear,self.HKEatK,LineWidth=1.5) 
-        %     hold on
-        %     loglog(self.KRadialLinear,self.VKEatK,LineWidth=1.5) 
-        %     loglog(self.KRadialLinear,self.PEatK,LineWidth=1.5) 
-        %     loglog(self.KRadialLinear,self.TEatK,LineWidth=1.5) 
-        %     xlim([min(self.KRadialLinear) max(self.KRadialLinear)])
-        %     %xticks(log10(2*pi./[1e5 1e4 1e3 1e2 1e1]))
-        % 
-        %     ylabel('Energy')  
-        %     xlabel("log(KRadial)")
-        %     legend("HKE","VKE","PE","TE" )
-        % 
-        %     [X,Y]= ndgrid(zNew,KRadialLog);
-        %     [X2,Y2]= ndgrid(zPerModeLog,KRadialLog);
-        % 
-        %     scatter3(X,Y,squeeze(DataInterpMat(:,3,:)))
-        %     %%% KRadial needs to be evenly spaced.
-        %     %%% Kmax related to 80% of the maximum stratification is very large 
-        %     %%% (1.4 which generates a wavelength of 4m!!). 
-        %     %%% Equally spacing the vector from 0 to Kmax with 64 generates the following result:
-        % 
-        %     %%% L1=inf
-        %     % L2=473m
-        %     % All the wavelengths are small. How can this be resolved?
-        %     % - Decrease Kmax?
-        %     % - Increase the number of points?
-        % 
-        % 
-        % end
-
-         %%%%%%%%%
+        
          function SIModes = initScatteredInterpolant(self,data)
              arguments                
                  self 
@@ -786,7 +641,6 @@ classdef InternalGravityWaveSpectrum < handle
                  verticalMode
              end
 
-             % WHY IS THAT BEEN CALLED SO MANY TIMES?
              SIModes = initScatteredInterpolant(self,data);
 
             

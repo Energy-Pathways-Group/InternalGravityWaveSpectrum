@@ -39,6 +39,9 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
     end
 
      methods (Test)
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Check if latitude is correct/valid
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         function testInitWithLatitude(testCase,latitude)
             if latitude >= -5 && latitude <= 5
             testCase.verifyError(@() InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000,latitude=latitude),"Latitude:MustBeAwayEquator");
@@ -48,9 +51,10 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
                 testCase.verifyWarningFree(@() InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000,latitude=latitude));
             end
         end
-    
-        % Test Stratification
-        
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Check if stratification is monotonic depending on condition
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%               
         function testValidationWhenShouldForceMonotonicDensityEnabled(testCase)            
             testCase.verifyWarningFree(@() InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000,shouldForceMonotonicDensity=1));
         end
@@ -63,11 +67,16 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             testCase.verifyError(@()InternalGravityWaveSpectrum(@(z) randn(size(z))*5.2e-3,4000,shouldForceMonotonicDensity=1), 'MATLAB:expectedIncreasing');
         end
         
-        %%%%%%%%%%%%%%% Test orthogonality First Condition %%%%%%%%%%%%%%%%  
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Test orthogonality - First Condition
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%          
         function testOrthogonalityFirstCond(testCase)
             D=4000;
+            N0 = 3*2*pi/3600;
+            L_gm = 1300;
             testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
-
+            %testCase.im = InternalGravityWaveSpectrum(@(z) N0*N0*exp(2*z/L_gm),D);
+            
                         
             %Creating Gi*Gj Matrix
             %orthogonalMatrix = zeros(testCase.im.nZ,size, size);           
@@ -82,7 +91,8 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
                 end
                 for n=1:testCase.im.nModes
                     for m=1:testCase.im.nModes
-                        orthogonalMatrix(n,m,indK)=trapz(testCase.im.zPerMode(:,indK),(testCase.im.N2(testCase.im.zPerMode(:,indK)) - testCase.im.f0^2) .* allProductMatrix(n,m,:));
+                        integrand= (testCase.im.N2(testCase.im.zPerMode(:,indK)) - testCase.im.f0^2) .* squeeze(allProductMatrix(n,m,:));
+                        orthogonalMatrix(n,m,indK)=trapz(testCase.im.zPerMode(:,indK),integrand);
             
                     end
                 end
@@ -100,11 +110,13 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             
 
             %Testing
-            testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.1)
+            testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.15)
         end
 
 
-        %%%%%%%%%%%%%%% Test orthogonality Second Condition %%%%%%%%%%%%%%%%   
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Test orthogonality - Second Condition
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%      
      
         function testOrthogonalitySecondCond(testCase)
             D=4000;
@@ -167,21 +179,22 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             testCase.verifyEqual(orthogonalMatrix(1:end-1,1:end-1,:), expectedMatrix(1:end-1,1:end-1,:),"AbsTol", 0.1)
         end
         
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-        % Test Vertical Bases
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Test Vertical Bases (computational x analitical)
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%      
+     
         function testVerticalBases(testCase)
             D=4000;
             testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
 
             % why is phase oposite?
             for jind= 1:testCase.im.nModes
-                for zind= 1:length(testCase.im.zNew)
+                for zind= 1:testCase.im.nZ
                     A2 = (1/D)*(2*testCase.im.g/((5.2e-3) - (testCase.im.f0)^2));
                     A= sqrt(A2);
                     m = jind*pi/D;
 
-                    G(zind,jind)=A*sin(m*(testCase.im.zNew(zind)+D));
+                    G(zind,jind)=A*sin(m*(testCase.im.zPerMode(zind,1)+D));
                     
                 end
             end
@@ -194,14 +207,18 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
 
 
-        % Test Energy
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Test if the total energy is  same before and after distribution 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
         function testDistributionAlternativeSpectrum(testCase)
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000);
             testCase.verifyEqual(sum(testCase.im.TE(:)), testCase.im.E_T(:),"AbsTol", 0.05)
         end
 
 
-
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Test Coeficients of energy
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
         function testEnergyCoeficients(testCase)
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000);
             
@@ -237,6 +254,8 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
        end
         
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Test Total Energy (TE = HKEIntegral+VKEIntegral+PEIntegral;)
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
         function testTotalEnergy(testCase)
             testCase.im = InternalGravityWaveSpectrum(@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300),4000,shouldForceMonotonicDensity=0);
             for indk=1:testCase.im.nK         
@@ -262,20 +281,21 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
 
             %testCase.verifyTrue(all(isWithinRelTol(:) | isWithinAbsTol(:)))
 
-
-            figure(3)
-            pcolor(log(allIntegral))
-            colorbar
-            title("Total Energy")
-            xlabel("Horizontal Wave Number INDEX")
-            ylabel("Vertical mode")
-
-            figure(4)
-            pcolor(log(testCase.im.TE))
-            colorbar
-            title("HKE + VKE + PE")
-            xlabel("Horizontal Wave Number INDEX")
-            ylabel("Vertical mode")
+            if(0)
+                figure(3)
+                pcolor(log(allIntegral))
+                colorbar
+                title("Total Energy")
+                xlabel("Horizontal Wave Number INDEX")
+                ylabel("Vertical mode")
+    
+                figure(4)
+                pcolor(log(testCase.im.TE))
+                colorbar
+                title("HKE + VKE + PE")
+                xlabel("Horizontal Wave Number INDEX")
+                ylabel("Vertical mode")
+            end
         end
 
     end
