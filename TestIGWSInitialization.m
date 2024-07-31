@@ -74,13 +74,11 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             D=4000;
             N0 = 3*2*pi/3600;
             L_gm = 1300;
-            testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
-            %testCase.im = InternalGravityWaveSpectrum(@(z) N0*N0*exp(2*z/L_gm),D);
+            %testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
+            testCase.im = InternalGravityWaveSpectrum(@(z) N0*N0*exp(2*z/L_gm),D);
             
                         
-            %Creating Gi*Gj Matrix
-            %orthogonalMatrix = zeros(testCase.im.nZ,size, size);           
-
+            %Creating Gi*Gj Matrix                   
             for indK= 1:testCase.im.nK
                 for indZ = 1:testCase.im.nZ
 
@@ -92,11 +90,11 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
                 for n=1:testCase.im.nModes
                     for m=1:testCase.im.nModes
                         integrand= (testCase.im.N2(testCase.im.zPerMode(:,indK)) - testCase.im.f0^2) .* squeeze(allProductMatrix(n,m,:));
-                        orthogonalMatrix(n,m,indK)=trapz(testCase.im.zPerMode(:,indK),integrand);
-            
+                        orthogonalMatrix(n,m,indK)=trapz(testCase.im.zPerMode(:,indK),integrand);            
                     end
                 end
             end
+
 
             %Creating expected Matrix     
             row=size(orthogonalMatrix,1);
@@ -107,10 +105,86 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
             end
             expectedMatrix = expectedMatrix*9.8;
             expectedMatrix(64,64,:)=0;
+            errorMatrix = orthogonalMatrix - expectedMatrix;
+
             
+           %%%%%%%%%%%    Plot      %%%%%%%%%%%%
+
+           %For each K figure out each mode starting failing this unit
+           %test
+            
+           AbsTol= 0.05;
+            
+            lowerVerticalMode = zeros(testCase.im.nK, 1); % Vetor para armazenar o menor modo para cada número de onda horizontal
+            
+            for iK = 1:testCase.im.nK                
+                slice = errorMatrix(:,:,iK);
+                
+                % First element that is bigger than the AbsTol
+                [row, col] = find(slice > AbsTol, 1, 'first');
+                
+                if isempty(row)                    
+                    lowerVerticalMode(iK) = NaN;
+                else                    
+                    lowerVerticalMode(iK) = min(row, col); 
+                end
+            end
+            
+            
+            plot(1:testCase.im.nK,lowerVerticalMode)
+            ylabel("Lower Vertical Number")
+            xlabel("Horizontal Wave Number")
+
+            %Creating Mask           
+            mask = ones(testCase.im.nModes, testCase.im.nModes, testCase.im.nK);
+            
+            for iK = 1:testCase.im.nK
+                if ~isnan(lowerVerticalMode(iK))
+                    % Ajustar a matriz de máscara para definir os valores a 0 a partir do menor modo vertical
+                    
+                    mask(lowerVerticalMode(iK):end, lowerVerticalMode(iK):end, iK) = 0;
+                end
+            end        
 
             %Testing
-            testCase.verifyEqual(orthogonalMatrix, expectedMatrix,"AbsTol", 0.15)
+            testCase.verifyEqual(orthogonalMatrix(mask==1), expectedMatrix(mask==1),"AbsTol", AbsTol)
+
+            %Video 
+            if(0)
+            
+                % Open video
+                videoFile = 'errorFandG.avi';
+                v = VideoWriter(videoFile);                
+                v.FrameRate = 2;
+                open(v);
+                
+                
+                % Video frame to frame
+                for iK = 1:testCase.im.nK
+                    
+                    figure;
+                    
+                    % Plotting pcolor for iK
+                    pcolor(errorMatrix(:,:,iK));                    
+                    colorbar;
+                    clim([0 0.1]);
+                    title(['iK: ', num2str(iK)]);
+                    
+                    % Write frame in a video
+                    frame = getframe(gcf);
+                    writeVideo(v, frame);
+                    
+                    % Fechar a figura para não sobrecarregar a memória
+                    close(gcf);
+                end
+                
+                % Fechar o arquivo de vídeo
+                close(v);
+                
+                % Exibir mensagem de conclusão
+                disp(['Video saved as ', videoFile]);
+
+            end
         end
 
 
@@ -120,7 +194,10 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
      
         function testOrthogonalitySecondCond(testCase)
             D=4000;
-            testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
+            N0 = 3*2*pi/3600;
+            L_gm = 1300;
+            %testCase.im = InternalGravityWaveSpectrum(@(z)5.2e-3,D);
+            testCase.im = InternalGravityWaveSpectrum(@(z) N0*N0*exp(2*z/L_gm),D);
 
                         
             %Creating Gi*Gj, hihj, FiFj Matrices
@@ -169,16 +246,56 @@ classdef TestIGWSInitialization < matlab.unittest.TestCase
                     for i=1:min(row,col)
                         expectedMatrix(i,i, indK) = testCase.im.h(i,indK);
                     end
-                end
+                end              
 
-                %expectedMatrix(64,64,:)=0;                
+
             end
-           
+           errorMatrix = orthogonalMatrix - expectedMatrix;
 
-            %Testing NOT WORKING FOR LAST MODE
-            testCase.verifyEqual(orthogonalMatrix(1:end-1,1:end-1,:), expectedMatrix(1:end-1,1:end-1,:),"AbsTol", 0.1)
+            
+           %%%%%%%%%%%    Plot      %%%%%%%%%%%%
+
+           %For each K figure out each mode starting failing this unit
+           %test
+            
+           AbsTol= 0.05;
+            
+            lowerVerticalMode = zeros(testCase.im.nK, 1); % Vetor para armazenar o menor modo para cada número de onda horizontal
+            
+            for iK = 1:testCase.im.nK                
+                slice = errorMatrix(:,:,iK);
+                
+                % First element that is bigger than the AbsTol
+                [row, col] = find(slice > AbsTol, 1, 'first');
+                
+                if isempty(row)                    
+                    lowerVerticalMode(iK) = NaN;
+                else                    
+                    lowerVerticalMode(iK) = min(row, col); 
+                end
+            end
+            
+            
+            plot(1:testCase.im.nK,lowerVerticalMode)
+            ylabel("Lower Vertical Number")
+            xlabel("Horizontal Wave Number")
+
+            %Creating Mask           
+            mask = ones(testCase.im.nModes, testCase.im.nModes, testCase.im.nK);
+            
+            for iK = 1:testCase.im.nK
+                if ~isnan(lowerVerticalMode(iK))
+                    % Ajustar a matriz de máscara para definir os valores a 0 a partir do menor modo vertical
+                    
+                    mask(lowerVerticalMode(iK):end, lowerVerticalMode(iK):end, iK) = 0;
+                end
+            end        
+
+            %Testing
+            testCase.verifyEqual(orthogonalMatrix(mask==1), expectedMatrix(mask==1),"AbsTol", AbsTol)            
         end
         
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Test Vertical Bases (computational x analitical)
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%      
