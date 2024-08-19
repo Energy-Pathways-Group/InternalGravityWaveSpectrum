@@ -32,6 +32,8 @@ classdef InternalGravityWaveSpectrum < handle
 
         zNew
 
+        cutoff_modes, cutoff_k
+
         
     end
         properties (Access = private, Hidden)
@@ -58,12 +60,11 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33 %set condition. How to modify erro mesage? costume validator
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 32
-                options.nZ (1,1) double =  65   
+                options.nK (1,1) double = 32                
                 options.shouldForceMonotonicDensity {mustBeNumericOrLogical} = 0
             end
 
-            
+           
             if options.latitude >= -5 && options.latitude <= 5
                 error("Latitude:MustBeAwayEquator","This toolbox does not provide a good solution near the Equator (5°S to 5°N)")
             
@@ -77,11 +78,16 @@ classdef InternalGravityWaveSpectrum < handle
             self.latitude=options.latitude;          
             self.nModes=options.nModes;
             self.nK=options.nK;
-            self.nZ=options.nZ;
+            self.nZ=options.nModes + 1;
             self.g=9.80665;
             self.Lz=Lz;
             self.shouldForceMonotonicDensity=options.shouldForceMonotonicDensity;
             self.j=1:self.nModes;
+
+            % Calculate the cutoff for the last one-third of the second and third dimensions
+            self.cutoff_modes = ceil(self.nModes * 2/3);
+            self.cutoff_k = ceil(self.nK * 2/3);
+                
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         % Step 1: Computation of min and max Kh based on the
@@ -125,7 +131,7 @@ classdef InternalGravityWaveSpectrum < handle
         self.GInitial = GInitial;
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
-        minOrder = 2; %floor(log10(2*pi/Kmax));
+        minOrder = 3; %floor(log10(2*pi/Kmax));
         if minOrder<=0
             minOrder=1;
         end
@@ -157,7 +163,7 @@ classdef InternalGravityWaveSpectrum < handle
             im = InternalModesSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zPerModeLog(:,iK),latitude=self.latitude,nModes=self.nModes);
             [FiK(:,:,iK),GiK(:,:,iK),hiK(:,iK),omegaiK(:,iK)] = im.ModesAtWavenumber(KRadialLog(iK)); %modes at quadrature points and not equally spaced
 
-
+        end
 
             %%%%%%%% IMPORTANT!!!!! %%%%%%%%%%%%%
 
@@ -166,7 +172,7 @@ classdef InternalGravityWaveSpectrum < handle
             % the format for hiK and omegaiK is [vertical modes (nModes), horiz wavenumber (nK)]
 
 
-        end
+ 
         self.zPerMode =zPerModeLog;
         self.F = FiK;
         self.G = GiK;
@@ -270,38 +276,52 @@ classdef InternalGravityWaveSpectrum < handle
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
-        % Horizontal Kinetic Energy 
+        % Displaying energy distribution
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        function HKEVariance =  HKEVariance(self,options)
+        function verticalVariance =  verticalVariance(self,energyTerm,options)
             %
             arguments
                 self
-                options.zVector = linspace(-self.Lz,0,4000) 
+                energyTerm %options are: 'TE','HKE','VKE' and 
+                options.zVector = linspace(-self.Lz,0,1000)   
+                options.mask logical = false
                 options.plot logical = true
+                
             end
             
-            %Befome summing over K I need to interpolate to the same z
-            %Vector. This loop is definitely not the best way of doing it            
-
-            for i= 1:self.nK
-                for j=1:self.nModes
-                    HKESamez(:,j,i)=interp1(self.zPerMode(:,i),self.HKE(:,j,i),options.zVector);  
-                end
+              
+            if strcmp(energyTerm, 'TE')
+                energy = self.HKE + self.VKE +self.PE;
+            elseif strcmp(energyTerm, 'HKE')
+                energy = self.HKE;
+            elseif strcmp(energyTerm, 'VKE')
+                energy = self.VKE;
+            else
+                energy = self.PE;
             end
-            
 
-            %Also can call HKEAtHorizontalWavenumber 
+            if options.mask == 1
+                
+                energyMask=energy(:, 1:self.cutoff_modes, 1:self.cutoff_k);
+                KRadialLogMask=self.KRadialLog(1:self.cutoff_k);
+                verticalModeMask=1:self.cutoff_modes;
+
+                energyInterp = scatteredInterpolation(self, energyMask, options.zVector, KRadialLogMask, verticalModeMask,'mask',options.mask); 
+            else
+                energyInterp = scatteredInterpolation(self, energy, options.zVector, self.KRadialLog, 1:self.nModes); 
+            end                       
+
 
             %Sum over modes and k
-            HKEVariance=sum(sum(HKESamez,3),2);
+            verticalVariance=sum(sum(energyInterp,3),2);
 
             %%% plot %%%%
             if options.plot ==1
 
-                figure(10)
+                fig = figure(10);
 
-                plot(HKEVariance*100,options.zVector)
+                plot(verticalVariance*100,options.zVector)
                 title("HKE")
                 ylabel("Depth [m]")
                 xlabel("Variance [cm^2/s^2]")
@@ -314,7 +334,7 @@ classdef InternalGravityWaveSpectrum < handle
     
         %%%%%%%%%%%%%%%
         
-        function HKEAtHorizontalWavenumber = HKEAtHorizontalWavenumber(self, z, options)
+        function energyAtHorizontalWavenumber = energyAtHorizontalWavenumber(self, z, options)
                     % 
             arguments
                 self
@@ -337,7 +357,7 @@ classdef InternalGravityWaveSpectrum < handle
 
             %interp on the KRadial vector specified by the user
 
-            HKEAtHorizontalWavenumber= interp1(self.KRadialLinear,HKEatk,options.KRadial);            
+            energyAtHorizontalWavenumber= interp1(self.KRadialLinear,HKEatk,options.KRadial);            
 
             if options.plot ==1
 
@@ -359,7 +379,7 @@ classdef InternalGravityWaveSpectrum < handle
 
         %%%%%%%%%%%%%%%
 
-        function HKEAtVerticalMode = HKEAtVerticalMode(self, z, options)
+        function energyAtVerticalMode = energyAtVerticalMode(self, z, options)
                         % 
             arguments
                 self
@@ -387,7 +407,7 @@ classdef InternalGravityWaveSpectrum < handle
             %    HKEatMode(i)=interp1(options.zVector,HKEatzMode(:,i),z);             
             %end
             
-            HKEAtVerticalMode = HKEatzMode;
+            energyAtVerticalMode = HKEatzMode;
 
             if options.plot ==1
 
@@ -408,7 +428,7 @@ classdef InternalGravityWaveSpectrum < handle
 
         %%%%%%%%%%%%%%%
 
-        function S = HKEAtFrequencies(self,z,options)
+        function S = energyAtFrequencies(self,z,options)
             arguments
                 self
                 z
@@ -449,116 +469,109 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
 
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %
-        % Vertical Kinetic Energy 
-        %
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % for the next section the step-by-step would be the same than for
-        % Horizontal Kinetic Energy.
-
-        function E = VKEVariance(self, z, options)
-            % 
-            arguments
-                self
-                z
-                options
-            end
-
-        %Step 1: 
-
-        end
-
-
-        
-        function E = VKEAtHorizontalWavenumber(self, KRadial, options)
-                    % 
-            arguments
-                self
-                KRadial
-                options
-            end
-        
-        end
-
-
-
-        function E = VKEAtVerticalMode(self, modeVector, options)
-                        % 
-            arguments
-                self
-                modeVector
-                options
-            end
-    
-        end
-
-
-
-        function S = VKEAtFrequencies(self,z,omega,spectrumType)
-            arguments
-                self
-                z
-                omega
-                spectrumType
-            end
-        end
-
-
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        %
-        % Potential Energy 
-        %
-        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        function E = PEVariance(self, z, options)
-            % 
-            arguments
-                self
-                z
-                options
-            end
-
-        end
-
-
-        
-        function E = PEAtHorizontalWavenumber(self, KRadial, options)
-                    % 
-            arguments
-                self
-                KRadial
-                options
-            end
-        
-        end
-
-
-
-        function E = PEAtVerticalMode(self, modeVector, options)
-                        % 
-            arguments
-                self
-                modeVector
-                options
-            end
-            
-        end
-
-
-
-        function S = PEAtFrequencies(self,z,omega,spectrumType)
-            arguments
-                self
-                z
-                omega
-                spectrumType
-                
-            end
-        end
+       
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
         % Interpolation        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+        function SIModes = initScatteredInterpolant(self,data,KRadialLog,nModes,options)
+             arguments                
+                 self 
+                 data
+                 KRadialLog 
+                 nModes
+                 options.mask logical = false
+             end
+
+                if options.mask 
+                     % ZLog
+                     ZVectorLog=reshape(self.zPerMode(:,1:self.cutoff_k),[],1);
+                else
+                     % ZLog
+                     ZVectorLog=reshape(self.zPerMode,[],1);
+                end
+
+                % KLog
+                KVectorRepLog = reshape(repmat(KRadialLog,[self.nZ 1]),[],1);
+                lambdaVectorLog= (2*pi)./KVectorRepLog;
+
+             if size(data,3)>1
+                 for n=nModes
+                     dataVector = reshape(data(:,n,:),[],1);
+    
+                     SIModes{n}=scatteredInterpolant(ZVectorLog,lambdaVectorLog,dataVector);                          
+                 end
+             else
+                 dataVector = reshape(data,[],1);
+    
+                 SIModes=scatteredInterpolant(ZVectorLog,lambdaVectorLog,dataVector); 
+             end
+
+         end           
+
+         
+   
+
+        %%%%%%%%%
+        function DataInterpMat = scatteredInterpolation(self, data, zVectorNew, KVectorNew, verticalMode, options)
+             arguments                
+                 self 
+                 data
+                 zVectorNew
+                 KVectorNew
+                 verticalMode
+                 options.mask logical = false
+             end
+
+             SIModes = initScatteredInterpolant(self,data,KVectorNew, verticalMode,'mask',options.mask);
+
+            
+             %zLin
+             ZVectorLin=reshape(repmat(zVectorNew,[1, length(KVectorNew)]),[],1);
+            
+             %Klin    
+             lengthZ=length(zVectorNew);
+             %VectorRepNew =  reshape(repmat(self.KRadialLog,[self.nZ 1]),[],1);
+             KVectorRepNew = reshape(repmat(KVectorNew,[lengthZ 1]),[],1);
+             lambdaVectorNew= (2*pi)./KVectorRepNew;
+
+             if size(data,3)>1
+
+                 for i=1:length(verticalMode)
+                    
+                     DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorNew);
+    
+                     DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
+                 end
+
+             else
+
+                 for i=1:length(verticalMode)
+
+                     DataInterp = SIModes(ZVectorLin, lambdaVectorNew);
+
+                     DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
+                 end
+
+             end
+             DataInterpMat = permute(DataInterpMat1,[1,3,2]);
+
+          end
+
+       %%%%%%%%%%%%
+       function DataInterp2D = interp2D(self, data, KVectorNew, verticalMode)
+             arguments                
+                 self 
+                 data
+                 KVectorNew
+                 verticalMode
+             end
+             [X,Y] = ndgrid((1:self.nModes),self.KRadialLog);
+             [Xq,Yq]= ndgrid(verticalMode,KVectorNew);
+
+             DataInterp2D = interpn(X,Y,data,Xq,Yq);
+           end
+             
 
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
@@ -601,102 +614,7 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
         
-         function SIModes = initScatteredInterpolant(self,data)
-             arguments                
-                 self 
-                 data
-             end
-
-                % ZLog
-                ZVectorLog=reshape(self.zPerModeLog,[],1);
-
-                % KLog
-                KVectorRepLog = reshape(repmat(self.KRadialLog,[self.nZ 1]),[],1);
-                lambdaVectorLog= (2*pi)./KVectorRepLog;
-
-             if size(data,3)>1
-                 for n=1:self.nModes
-                     dataVector = reshape(data(:,n,:),[],1);
-    
-                     SIModes{n}=scatteredInterpolant(ZVectorLog,lambdaVectorLog,dataVector);                          
-                 end
-             else
-                 dataVector = reshape(data,[],1);
-    
-                 SIModes=scatteredInterpolant(ZVectorLog,lambdaVectorLog,dataVector); 
-             end
-
-         end           
-
-         
-   
-
-        %%%%%%%%%
-        function DataInterpMat = scatteredInterpolation(self, data, zVectorNew, KVectorNew, verticalMode)
-             arguments                
-                 self 
-                 data
-                 zVectorNew
-                 KVectorNew
-                 verticalMode
-             end
-
-             SIModes = initScatteredInterpolant(self,data);
-
-            
-             %zLin
-             ZVectorLin=reshape(repmat(zVectorNew,[1, length(KVectorNew)]),[],1);
-            
-             %Klin    
-             lengthZ=length(zVectorNew);
-             %VectorRepNew =  reshape(repmat(self.KRadialLog,[self.nZ 1]),[],1);
-             KVectorRepNew = reshape(repmat(KVectorNew,[lengthZ 1]),[],1);
-             lambdaVectorNew= (2*pi)./KVectorRepNew;
-
-             if size(data,3)>1
-
-                 for i=1:length(verticalMode)
-                    
-                     DataInterp = SIModes{verticalMode(i)}(ZVectorLin, lambdaVectorNew);
-    
-                     DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
-                 end
-
-             else
-
-                 for i=1:length(verticalMode)
-
-                     DataInterp = SIModes(ZVectorLin, lambdaVectorNew);
-
-                     DataInterpMat1(:,:,i) =reshape(DataInterp, length(zVectorNew),length(KVectorNew));
-                 end
-
-             end
-             DataInterpMat = permute(DataInterpMat1,[1,3,2]);
-
-             % Interpolating
-                  
-        end
-
-       %%%%%%%%%%%%
-       function DataInterp2D = interp2D(self, data, KVectorNew, verticalMode)
-             arguments                
-                 self 
-                 data
-                 KVectorNew
-                 verticalMode
-             end
-             [X,Y] = ndgrid((1:self.nModes),self.KRadialLog);
-             [Xq,Yq]= ndgrid(verticalMode,KVectorNew);
-
-             DataInterp2D = interpn(X,Y,data,Xq,Yq);
-           end
-        
-
-
-
-         end
-
+    end    
 end
 
     
