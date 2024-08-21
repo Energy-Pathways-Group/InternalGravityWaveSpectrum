@@ -34,6 +34,8 @@ classdef InternalGravityWaveSpectrum < handle
 
         cutoff_modes, cutoff_k
 
+        M, B
+
         
     end
         properties (Access = private, Hidden)
@@ -216,6 +218,7 @@ classdef InternalGravityWaveSpectrum < handle
         M = @(j) (j_star.^2 +(j).^2).^((-5/4));
         M_norm = sum(M(1:1024));
         M= @(j) ((j_star.^2 +(j).^2).^((-5/4)))/M_norm;
+        self.M=M;
 
         % sanity check to confirm this is 1
         %sum(M(1:1024)) 
@@ -237,6 +240,7 @@ classdef InternalGravityWaveSpectrum < handle
 
         % Redefine the anonymous function B(k,j)
         B = @(k, jind) (1./(k.^2.* self.Lr2(jind) + 1).^(1 * slope)).*sqrt(self.Lr2(jind))/B_norm(jind);
+        self.B=B;
 
         % Sanity check to confirm that the integrals are now normalized
         % for jind=(1:self.nModes-1)                
