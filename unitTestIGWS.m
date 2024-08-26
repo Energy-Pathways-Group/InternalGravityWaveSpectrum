@@ -4,116 +4,148 @@ classdef unitTestIGWS < matlab.unittest.TestCase
     % 
     % Leticia fabre de Lima
     %
-    % April, 2024   Version 1.0
-    % result = run(matlab.unittest.TestSuite.fromClass(?TestWVTransformInitialization));
+    % August, 2024   Version 2.0
+    %
+    % result = run(matlab.unittest.TestSuite.fromClass(?unitTestIGWS));
     % rt = table(result)
+    % rt.Details{4,1}.DiagnosticRecord.Report
+    %
+    % import matlab.unittest.TestSuite
+    % suite = TestSuite.fromMethod(?TestIGWSInitialization, 'testInitWithLatitude');
+    % result = run(suite)
 
 
     properties
-        im
+        im  % Property to store the InternalGravityWaveSpectrum instance
     end
 
     
     methods (Static)
         function arbitraryStratFunc = getArbitraryStratFunc()
+            % This method returns an arbitrary stratification function based on atlas data
             lat0 = -50.0;
             lon0 = -25.0;
-            atlas = VerticalModeAtlas('PhD/Reps/vertical-mode-atlas/modeAtlasFile.nc');
-            rho = atlas.rho(lat0, lon0);
+            atlas = VerticalModeAtlas('PhD/Reps/InternalGravityWaveSpectrum/modeAtlasFile.nc');
             [N2, z] = atlas.N2(lat0, lon0);
-            arbitraryStratFunc = @(zin) interp1(z, N2, zin);
+            arbitraryStratFunc = @(zin) interp1(z, N2, zin);  % Interpolated stratification function
         end
     end
 
-
     properties (ClassSetupParameter)
-        Lz = struct('Lz',4000);
-        latitudeInit = {0,5,10,90}; % Define latitude here if needed
-        stratification = {'exponential','constant','arbitrary'};        
+        Lz = struct('Lz', 4000);  % Vertical extent of the domain
+        latitudeInit = {10, 33};  % Initialize latitude parameter
+        stratification = {'exponential', 'constant', 'arbitrary'};  % Types of stratification
     end
 
     methods (TestClassSetup)
-        function classSetup(testCase,Lz, latitudeInit,stratification)
-            disp("here")
+        function classSetup(testCase, Lz, latitudeInit, stratification)
+            % Set up the InternalGravityWaveSpectrum based on stratification type
             switch stratification
                 case 'exponential'
-                   N2=@(z) 3*2*pi/3600*3*2*pi/3600*exp(2*z/1300);
+                    N2 = @(z) 3*2*pi/3600 * 3*2*pi/3600 * exp(2*z/1300);
                 case 'constant'
-                   N2=@(z)5.2e-3;      
-                case 'arbitrary'                    
-                   N2=unitTestIGWS.getArbitraryStratFunc();         
+                    N2 = @(z) 5.2e-3;
+                case 'arbitrary'
+                    N2 = unitTestIGWS.getArbitraryStratFunc();
             end
             testCase.im = InternalGravityWaveSpectrum(N2, Lz, 'latitude', latitudeInit);
-
         end
     end
 
-    % methods (TestParameterDefinition, Static)
-    %     function latitude = initializeLatitudeParameter()
-    %         latitude = {0,5,10,90};
-    %     end
-    % end
-
-   properties (TestParameter)
-        latitude  = {0,5,10,90}
-   end
-
-   methods (Test)
-       function testInitWithLatitude(testCase,latitude)
-        % % Test if the correct error is thrown based on latitude value
-        % 
-        % % Assuming InternalGravityWaveSpectrum has a method that sets latitude
-        % testCase.im.setLatitude(latitude);
-        % 
-        % % Depending on the latitude, the class should throw different errors
-        % if latitude < -10
-        %     % Expecting 'MustBeAwayEquator' error for latitude less than -10
-        %     testCase.verifyThat(@() testCase.im.someMethod(), Throws("Latitude:MustBeAwayEquator"));
-        % else
-        %     % Expecting 'WrongValue' error for latitude greater than or equal to -10
-        %     testCase.verifyThat(@() testCase.im.someMethod(), Throws("Latitude:WrongValue"));
-
-        
-            if latitude < 5
-                testCase.verifyError(@() InternalGravityWaveSpectrum(N2, testCase.Lz, 'latitude', latitude),'MATLAB:validators:mustBeGreaterThanOrEqual' );
-            elseif latitude > 85
-                testCase.verifyError(@() InternalGravityWaveSpectrum(N2, testCase.Lz, 'latitude', latitude),'MATLAB:validators:mustBeLessThanOrEqual' );
-            else
-                testCase.verifyWarningFree(@() InternalGravityWaveSpectrum(N2, testCase.Lz, 'latitude', latitude));
-            end        
-    end
 
 
+methods (Test)
+        function testVerticalVarianceWVM(testCase)
+            % Test the vertical variance against interquartile ranges
 
+            plot = 0;  % Set to 1 to enable plotting
+            D = 4000;  % Depth
+            zvect = linspace(-testCase.im.Lz, 0, 1000);
 
+            % Initialize Wave Vortex Model (WVM) transform
+            Lx = 200e3;
+            Ly = Lx;  % Assuming square domain for simplicity
+            Nx = 256; Ny = 256; Nz = 129;  % Grid points
 
+            wvt = WVTransformBoussinesq([Lx, Ly, D], [Nx, Ny, Nz], 'latitude', testCase.im.latitude, 'N2', testCase.im.N2);
+            wvt.initWithAlternativeSpectrum;
 
+            % Define energy terms to evaluate
+            energyTerms = {'HKE', 'VKE', 'PE', 'TE'};
+
+            if plot
+                figure(17);
+            end
+
+            % Loop over each energy term
+            for i = 1:length(energyTerms)
+                energyTerm = energyTerms{i};
+                verticalVariance = testCase.im.verticalVariance(energyTerm, 'zVector', zvect, 'Plot', 0, 'Mask', 1);
+
+                % Calculate energy based on term
+                switch energyTerm
+                    case 'PE'
+                        Energy = 0.5 * (wvt.eta.^2 .* reshape(wvt.N2, [1, 1, size(wvt.eta, 3)]));
+                    case 'HKE'
+                        Energy = 0.5 * (wvt.u.^2 + wvt.v.^2);
+                    case 'VKE'
+                        Energy = 0.5 * wvt.w.^2;
+                    otherwise
+                        Energy = 0.5 * (wvt.u.^2 + wvt.v.^2 + wvt.w.^2 + ...
+                                        (wvt.eta.^2 .* reshape(wvt.N2, [1, 1, size(wvt.eta, 3)])));
+                end
+
+                % Calculate mean and quartiles along z-dimension
+                Energy_bar = squeeze(mean(Energy, [1, 2]));
+                q25 = squeeze(prctile(Energy, 25, [1, 2]));
+                q75 = squeeze(prctile(Energy, 75, [1, 2]));
+
+                % Interpolate to zvect
+                Energy_bar_interp = interp1(wvt.z, Energy_bar, zvect);
+                q25_interp = interp1(wvt.z, q25, zvect);
+                q75_interp = interp1(wvt.z, q75, zvect);
+
+                % Unit test: Verify that vertical variance is within interquartile range
+                testCase.verifyGreaterThan(verticalVariance, q25_interp, ...
+                    'Vertical Variance is not above q25.');
+                testCase.verifyLessThan(verticalVariance, q75_interp, ...
+                    'Vertical Variance is not below q75.');
+
+                % Plotting if enabled
+                if plot
+                    subplot(2, 2, i);
+                    hold on;
+
+                    % Plot quartiles
+                    fill([q25_interp, fliplr(q75_interp)] * 100, [zvect, fliplr(zvect)], ...
+                         'cyan', 'FaceAlpha', 0.5, 'EdgeColor', 'none');
+                    plot(Energy_bar_interp * 100, zvect, 'b', 'LineWidth', 2);
+                    plot(verticalVariance * 100, zvect, 'k--', 'LineWidth', 2);
+
+                    % Label and title
+                    xlabel([energyTerm, ' (cm^2s^{-2})']);
+                    ylabel('Depth (m)');
+                    title([energyTerm, ' with Interquartile Range']);
+                    grid on;
+                    hold off;
+                end
+            end
+
+            if plot
+                sgtitle('Energy Terms with Interquartile Range');
+            end
+        end
     end
 end
 
 
 
 
-        
-   %%%%%%%%%%%%%%%%%% TO BE UPDATED %%%%%%%%%%%%%%%%%%%%%%%%%%%%     
 
- %         function testMonotonicDensityValidation(testCase)       
- %            % Mock the options structure
- %            options.shouldForceMonotonicDensity = 1;
- % 
- %            % Test with increasing vector
- %            N2zInitial = [1, 2, 3, 4];
- %            verifyError(testCase, @()validateattributes(N2zInitial, {'numeric'}, {'vector', 'increasing'}), '');
- % 
- %            % Test with decreasing vector
- %            N2zInitial = [4, 3, 2, 1];
- %            verifyError(testCase, @()validateattributes(N2zInitial, {'numeric'}, {'vector', 'increasing'}), '');
- % 
- %            % Test with non-increasing vector
- %            N2zInitial = [1, 3, 2, 4];
- %            verifyError(testCase, @()validateattributes(N2zInitial, {'numeric'}, {'vector', 'increasing'}), '');
- %        end
- % 
+
+
+        
+ 
  % 
  % 
  %        function plotModeHighestFrequency(im)
@@ -211,17 +243,17 @@ end
  %            sgtitle("F and G; Vertical mode = 3; Vary wavelength")
  % 
  %            subplot(1,2,1)
-            for ii = 1:5:20
-             plot(im.F(:,3,ii),im.zNew ,'k',LineWidth=1.5) 
-             hold on
-            % pause
-            end
-
-             for ii = 1:3
-             plot(FiK(:,3,ii),zPerModeLog(:,ii) ,'k',LineWidth=1.5) 
-             hold on
-            % pause
-            end
+            % for ii = 1:5:20
+            %  plot(im.F(:,3,ii),im.zNew ,'k',LineWidth=1.5) 
+            %  hold on
+            % % pause
+            % end
+            % 
+            %  for ii = 1:3
+            %  plot(FiK(:,3,ii),zPerModeLog(:,ii) ,'k',LineWidth=1.5) 
+            %  hold on
+            % % pause
+            % end
  %            title("F")
  %            ylabel("Depth [m]")
  % 
