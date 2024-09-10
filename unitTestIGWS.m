@@ -25,7 +25,7 @@ classdef unitTestIGWS < matlab.unittest.TestCase
             % This method returns an arbitrary stratification function based on atlas data
             lat0 = -50.0;
             lon0 = -25.0;
-            atlas = VerticalModeAtlas('PhD/Reps/InternalGravityWaveSpectrum/modeAtlasFile.nc');
+            atlas = VerticalModeAtlas('PhD/EnergyVariability/VerticalModeAtlas/modeAtlasFile.nc');
             [N2, z] = atlas.N2(lat0, lon0);
             arbitraryStratFunc = @(zin) interp1(z, N2, zin);  % Interpolated stratification function
         end
@@ -48,7 +48,7 @@ classdef unitTestIGWS < matlab.unittest.TestCase
                 case 'arbitrary'
                     N2 = unitTestIGWS.getArbitraryStratFunc();
             end
-            testCase.im = InternalGravityWaveSpectrum(N2, Lz, 'latitude', latitudeInit);
+            testCase.im = InternalGravityWaveSpectrum(N2, Lz, 'latitude', latitudeInit,'nModes',128);
         end
     end
 
@@ -58,7 +58,7 @@ methods (Test)
         function testVerticalVarianceWVM(testCase)
             % Test the vertical variance against interquartile ranges
 
-            plot = 0;  % Set to 1 to enable plotting
+            plotFig = 1;  % Set to 1 to enable plotting
             D = 4000;  % Depth
             zvect = linspace(-testCase.im.Lz, 0, 1000);
 
@@ -73,8 +73,8 @@ methods (Test)
             % Define energy terms to evaluate
             energyTerms = {'HKE', 'VKE', 'PE', 'TE'};
 
-            if plot
-                figure(17);
+            if plotFig
+                figure;
             end
 
             % Loop over each energy term
@@ -106,20 +106,22 @@ methods (Test)
                 q75_interp = interp1(wvt.z, q75, zvect);
 
                 % Unit test: Verify that vertical variance is within interquartile range
-                testCase.verifyGreaterThan(verticalVariance, q25_interp, ...
+                testCase.verifyGreaterThan(verticalVariance(~isnan(q25_interp)), q25_interp(~isnan(q25_interp))', ...
                     'Vertical Variance is not above q25.');
-                testCase.verifyLessThan(verticalVariance, q75_interp, ...
+                testCase.verifyLessThan(verticalVariance(~isnan(q75_interp)), q75_interp(~isnan(q75_interp))', ...
                     'Vertical Variance is not below q75.');
 
                 % Plotting if enabled
-                if plot
+                if plotFig
                     subplot(2, 2, i);
                     hold on;
 
                     % Plot quartiles
-                    fill([q25_interp, fliplr(q75_interp)] * 100, [zvect, fliplr(zvect)], ...
-                         'cyan', 'FaceAlpha', 0.5, 'EdgeColor', 'none');
-                    plot(Energy_bar_interp * 100, zvect, 'b', 'LineWidth', 2);
+                        
+                     fill([q75_interp(~isnan(q25_interp))*100, fliplr(q25_interp(~isnan(q25_interp)))*100], [zvect(~isnan(q25_interp)), fliplr(zvect(~isnan(q25_interp)))], ...
+                    'cyan', 'FaceAlpha', 0.5, 'EdgeColor', 'b');
+                    hold on
+                    plot(Energy_bar_interp(~isnan(Energy_bar_interp)) * 100, zvect(~isnan(Energy_bar_interp)), 'b', 'LineWidth', 2);
                     plot(verticalVariance * 100, zvect, 'k--', 'LineWidth', 2);
 
                     % Label and title
@@ -131,7 +133,7 @@ methods (Test)
                 end
             end
 
-            if plot
+            if plotFig
                 sgtitle('Energy Terms with Interquartile Range');
             end
         end
