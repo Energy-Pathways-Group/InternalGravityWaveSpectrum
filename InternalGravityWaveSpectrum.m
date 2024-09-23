@@ -393,7 +393,7 @@ classdef InternalGravityWaveSpectrum < handle
 
 
             if options.plot==1
-                figure(20)
+                figure
 
                 if options.mask
                     semilogy(self.KRadialLog(1:self.cutoff_k), energyAtHorizontalWavenumber*1000) 
