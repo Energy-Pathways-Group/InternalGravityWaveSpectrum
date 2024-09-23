@@ -338,42 +338,74 @@ classdef InternalGravityWaveSpectrum < handle
     
         %%%%%%%%%%%%%%%
         
-        function energyAtHorizontalWavenumber = energyAtHorizontalWavenumber(self, z, options)
+        function energyAtHorizontalWavenumber = energyAtHorizontalWavenumber(self, z,energyTerm, options)
                     % 
             arguments
                 self
                 z (1,1) double %or vector
-                options.KRadial double = self.KRadialLinear
+                energyTerm %options are: 'TE','HKE','VKE' and 'PE'
+                options.KRadial double = []
+                options.mask logical = false
                 options.plot logical = true
 
             end
 
 
-           %Sum over modes
-           HKEatzK=sum(self.HKE,2);
+            if strcmp(energyTerm, 'TE')
+                energy = self.HKE + self.VKE +self.PE;
+            elseif strcmp(energyTerm, 'HKE')
+                energy = self.HKE;
+            elseif strcmp(energyTerm, 'VKE')
+                energy = self.VKE;
+            else
+                energy = self.PE;
+            end
+           
+            %%%            
 
             % interp the matriz [nz, nK] for the same position on the
             % vertical (z)
+            if options.mask ==1
+                energyMask=energy(:, 1:self.cutoff_modes, 1:self.cutoff_k);
+                energyMaskAtzK=squeeze(sum(energyMask,2));
 
-            for i= 1:length(self.KRadialLinear)
-                HKEatk(i)=interp1(self.zPerMode(:,i),HKEatzK(:,i),z);             
+                for i= 1:length(self.KRadialLog(1:self.cutoff_k))                                    
+                    HKEatk= interp1(self.zPerMode(:,i),energyMaskAtzK,z);  
+                end
+
+            else
+                energyAtzK=sum(energy,2);
+                for i= 1:length(self.KRadialLog)                                  
+                    HKEatk= interp1(self.zPerMode(:,i),energyAtzK,z);   
+                end                  
             end
 
             %interp on the KRadial vector specified by the user
+            if  ~isempty(options.KRadial)
+                if options.mask == 1
+                   energyAtHorizontalWavenumber= interp1(self.KRadialLog(1:self.cutoff_k),HKEatk,options.KRadial);
+                else
+                   energyAtHorizontalWavenumber= interp1(self.KRadialLog,HKEatk,options.KRadial); 
+                end
+            else
+                energyAtHorizontalWavenumber=HKEatk;
+            end
 
-            energyAtHorizontalWavenumber= interp1(self.KRadialLinear,HKEatk,options.KRadial);            
 
-            if options.plot ==1
-
+            if options.plot==1
                 figure(20)
 
-                loglog(options.KRadial, HKEAtHorizontalWavenumber*100)    
-                title("HKE")
+                if options.mask
+                    semilogy(self.KRadialLog(1:self.cutoff_k), energyAtHorizontalWavenumber*1000) 
+                else
+                   semilogy(self.KRadialLog, energyAtHorizontalWavenumber*1000)   
+                end
+                    
+                title(energyTerm)
                 ylabel("Variance [cm^2/s^2]")
-                xlabel("Horizontal Wavenumber [m]")
-                grid on
-            else
-            end
+                xlabel("Horizontal Wavenumber [m^{-1}]")
+                grid on            
+           end
 
              
 
