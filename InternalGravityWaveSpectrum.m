@@ -62,7 +62,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33 %set condition. How to modify erro mesage? costume validator
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 32                
+                options.nK (1,1) double = 32              
                 options.shouldForceMonotonicDensity {mustBeNumericOrLogical} = 0
             end
 
@@ -134,6 +134,7 @@ classdef InternalGravityWaveSpectrum < handle
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
         minOrder = 3; %floor(log10(2*pi/Kmax));
+        %minOrder = floor(log10(2*pi/Kmax));
         if minOrder<=0
             minOrder=1;
         end
@@ -142,8 +143,9 @@ classdef InternalGravityWaveSpectrum < handle
         wavelengthLog=logspace(minOrder,5,self.nK);     
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
-
-
+        
+       %KRadialLog = fliplr(linspace((2*pi)./10^3,(2*pi)./10^5,self.nK));
+       %self.KRadialLog=KRadialLog;
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%            
         % Step 2: Computation of F and G Matriz [nK, nZ, nModes]
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -337,7 +339,7 @@ classdef InternalGravityWaveSpectrum < handle
 
     
         %%%%%%%%%%%%%%%
-        
+        % I need to fix the part of mask
         function energyAtHorizontalWavenumber = energyAtHorizontalWavenumber(self, z,energyTerm, options)
                     % 
             arguments
@@ -370,15 +372,21 @@ classdef InternalGravityWaveSpectrum < handle
                 energyMaskAtzK=squeeze(sum(energyMask,2));
 
                 for i= 1:length(self.KRadialLog(1:self.cutoff_k))                                    
-                    HKEatk= interp1(self.zPerMode(:,i),energyMaskAtzK,z);  
+                    HKEatk(i)= interp1(self.zPerMode(:,i),energyMaskAtzK(:,i),z);  
                 end
 
             else
-                energyAtzK=sum(energy,2);
+                % energyinterp = scatteredInterpolation(self, energy, -self.Lz:0, self.KRadialLog, 1:self.nModes);
+                % energyAtzK=squeeze(sum(energyinterp,2));
+                % wvtHKEatZ=interp1(-self.Lz:0,energyAtzK,z);
+                energyAtzK=squeeze(sum(energy,2));
+
                 for i= 1:length(self.KRadialLog)                                  
-                    HKEatk= interp1(self.zPerMode(:,i),energyAtzK,z);   
+                    HKEatk(i)= interp1(self.zPerMode(:,i),energyAtzK(:,i),z);   
                 end                  
             end
+
+            HKEatk=HKEatk./self.dKLog;
 
             %interp on the KRadial vector specified by the user
             if  ~isempty(options.KRadial)
@@ -388,26 +396,9 @@ classdef InternalGravityWaveSpectrum < handle
                    energyAtHorizontalWavenumber= interp1(self.KRadialLog,HKEatk,options.KRadial); 
                 end
             else
-                energyAtHorizontalWavenumber=HKEatk;
+                energyAtHorizontalWavenumber=squeeze(HKEatk);
             end
-
-
-            if options.plot==1
-                figure
-
-                if options.mask
-                    semilogy(self.KRadialLog(1:self.cutoff_k), energyAtHorizontalWavenumber*1000) 
-                else
-                   semilogy(self.KRadialLog, energyAtHorizontalWavenumber*1000)   
-                end
-                    
-                title(energyTerm)
-                ylabel("Variance [cm^2/s^2]")
-                xlabel("Horizontal Wavenumber [m^{-1}]")
-                grid on            
-           end
-
-             
+                       
 
         end
 
@@ -649,8 +640,27 @@ classdef InternalGravityWaveSpectrum < handle
             end
         end
 
-        
-    end    
+
+        %%%%%%%%%%%%%%%%
+        function dKLog = dKLog(self)
+            for iK = 1:self.nK
+                    if iK == 1
+                        % First Interval
+                        lowerBound = 0;  % Use um valor pequeno para evitar zero
+                        upperBound = self.KRadialLog(iK)/2;
+                    elseif iK == length(self.KRadialLog)
+                        % Last Interval
+                        lowerBound = upperBound;
+                        upperBound = self.KRadialLog(iK);
+                    else
+                        % Others Intervals
+                        lowerBound = upperBound;
+                        upperBound = self.KRadialLog(iK) + (self.KRadialLog(iK + 1) - self.KRadialLog(iK) )/2;
+                    end
+                 dKLog(iK) = (upperBound-lowerBound);        
+            end   
+        end
+    end
 end
 
     
