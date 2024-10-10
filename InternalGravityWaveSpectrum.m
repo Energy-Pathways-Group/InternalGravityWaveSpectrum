@@ -126,14 +126,14 @@ classdef InternalGravityWaveSpectrum < handle
         im = InternalModesWKBSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zInitial,latitude=self.latitude,nModes=self.nModes);       
 
 
-        [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.8*sqrt(N2max));
+        [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.9*sqrt(N2max));
         Kmax= max(k);
 
         self.FInitial = FInitial;
         self.GInitial = GInitial;
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
-        minOrder = 3; %floor(log10(2*pi/Kmax));
+        minOrder = 2; %floor(log10(2*pi/Kmax));
         %minOrder = floor(log10(2*pi/Kmax));
         if minOrder<=0
             minOrder=1;
@@ -144,8 +144,17 @@ classdef InternalGravityWaveSpectrum < handle
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
         
-       %KRadialLog = fliplr(linspace((2*pi)./10^3,(2*pi)./10^5,self.nK));
-       %self.KRadialLog=KRadialLog;
+
+        % % KRadial from frequency
+        % omegaVector = linspace(self.f0*1.005,0.8*sqrt(self.N2max),32);
+        % 
+        % KVector=[];
+        % for i= 1:length(omegaVector)
+        %     [~,~,~,K] = im.ModesAtFrequency(omegaVector(i));
+        %     KVector=[KVector;K];        
+        % end
+        % %KRadialLog=sort(KVector(:));
+
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%            
         % Step 2: Computation of F and G Matriz [nK, nZ, nModes]
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -455,37 +464,69 @@ classdef InternalGravityWaveSpectrum < handle
 
         %%%%%%%%%%%%%%%
 
-        function S = energyAtFrequencies(self,z,options)
+        function [S,EnergyFrequency,isRepresented] = energyAtFrequencies(self,energyTerm,z,options)
             arguments
                 self
+                energyTerm %options are: 'TE','HKE','VKE' and 'PE'
                 z
                 options.omegaVector = linspace(self.f0,0.8*sqrt(self.N2max),self.nK);
                 options.spectrumType
                 options.plot = true
             end
+
+            if strcmp(energyTerm, 'TE')
+                data = self.HKE + self.VKE +self.PE;
+                energy = squeeze(scatteredInterpolation(self, data, z, self.KRadialLog, 1:self.nModes)); 
+                
+            elseif strcmp(energyTerm, 'HKE')
+                data = self.HKE;
+                energy = squeeze(scatteredInterpolation(self, data, z, self.KRadialLog, 1:self.nModes)); 
             
-            
-            
-            for i= 1:length(self.KRadialLinear)
-                for j=1:self.nModes
-                    HKEGivez(j,i)=interp1(self.zPerMode(:,i),self.HKE(:,j,i),z);  
-                end
+            elseif strcmp(energyTerm, 'VKE')
+                data = self.VKE;
+                energy = squeeze(scatteredInterpolation(self, data, z, self.KRadialLog, 1:self.nModes)); 
+            elseif strcmp(energyTerm, 'PE')
+                data = self.PE;
+                energy = squeeze(scatteredInterpolation(self, data, z, self.KRadialLog, 1:self.nModes)); 
+            else
+                disp('This option does not exist')
+            end
+                        
+
+            %Defining omegaVector
+            omegaj1=self.omega(1,:);
+            dOmega=max(diff(sort(omegaj1(:))));            
+            omegaVector=min(self.omega(:)):2*dOmega:max(self.omega(:));
+
+            EnergyFrequency=zeros(length(self.j),length(omegaVector));
+
+            % Redistributing energy over frequency
+            for indj=(1:self.nModes) 
+                
+                for i=(1:length(omegaVector)-1)    
+                                  
+                % find all the kl point btw the two values of Kh
+                    indForOmega = self.omega(indj,:)>=omegaVector(i) & self.omega(indj,:)<omegaVector(i+1);
+
+                    isRepresented(indj,i)= sum(indForOmega);
+                    EnergyFrequency(indj,i) = EnergyFrequency(indj,i) + sum(squeeze(energy(indj,indForOmega)));
+                    
+                              
+                end  
             end
 
-            
-            for j=1:self.nModes
-                    HKEOmega(j,:)=interp1(self.omega(j,:),HKEGivez(j,:), options.omegaVector);  
-            end
-           
-            S = sum(HKEOmega,1); 
+
+
+            S=sum(EnergyFrequency,1);          
+
 
             
             if options.plot ==1
 
                 figure(60)
 
-                loglog((options.omegaVector)*(24*3600)/(2*pi), S*100)    
-                title("HKE")
+                loglog((omegaVector)*(24*3600)/(2*pi), S*100)    
+                title(energyTerm)
                 ylabel("Variance [cm^2/s^2]")
                 xlabel("Frequency [cycle/day]")
                 grid on
@@ -660,6 +701,13 @@ classdef InternalGravityWaveSpectrum < handle
                  dKLog(iK) = (upperBound-lowerBound);        
             end   
         end
+
+        function omegaVector = omegaVector(self)
+            omegaj1=self.omega(1,:);
+            dOmega=max(diff(sort(omegaj1(:))));            
+            omegaVector=min(self.omega(:)):2*dOmega:max(self.omega(:));
+        end
+
     end
 end
 
