@@ -62,7 +62,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33 %set condition. How to modify erro mesage? costume validator
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 32              
+                options.nK (1,1) double = 256           
                 options.shouldForceMonotonicDensity {mustBeNumericOrLogical} = 0
             end
 
@@ -126,17 +126,17 @@ classdef InternalGravityWaveSpectrum < handle
         im = InternalModesWKBSpectral(N2=self.N2,zIn=[-Lz 0],zOut=zInitial,latitude=self.latitude,nModes=self.nModes);       
 
 
-        [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.9*sqrt(N2max));
+        [FInitial,GInitial,h,k] = im.ModesAtFrequency(0.95*sqrt(N2max));
         Kmax= max(k);
 
         self.FInitial = FInitial;
         self.GInitial = GInitial;
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
-        minOrder = 2; %floor(log10(2*pi/Kmax));
-        %minOrder = floor(log10(2*pi/Kmax));
+        %minOrder = 2; 
+        minOrder = floor(log10(2*pi/Kmax));
         if minOrder<=0
-            minOrder=1;
+             minOrder=0;
         end
 
         % KRadial equally spaced in log scale
@@ -336,7 +336,7 @@ classdef InternalGravityWaveSpectrum < handle
 
                 fig = figure(10);
 
-                plot(verticalVariance*100,options.zVector)
+                plot(verticalVariance*1000,options.zVector)
                 title("HKE")
                 ylabel("Depth [m]")
                 xlabel("Variance [cm^2/s^2]")
@@ -464,7 +464,7 @@ classdef InternalGravityWaveSpectrum < handle
 
         %%%%%%%%%%%%%%%
 
-        function [S,EnergyFrequency,isRepresented] = energyAtFrequencies(self,energyTerm,z,options)
+        function [S,EnergyFrequency] = energyAtFrequencies(self,energyTerm,z,options)
             arguments
                 self
                 energyTerm %options are: 'TE','HKE','VKE' and 'PE'
@@ -508,7 +508,7 @@ classdef InternalGravityWaveSpectrum < handle
                 % find all the kl point btw the two values of Kh
                     indForOmega = self.omega(indj,:)>=omegaVector(i) & self.omega(indj,:)<omegaVector(i+1);
 
-                    isRepresented(indj,i)= sum(indForOmega);
+                    %isRepresented(indj,i)= sum(indForOmega);
                     EnergyFrequency(indj,i) = EnergyFrequency(indj,i) + sum(squeeze(energy(indj,indForOmega)));
                     
                               
