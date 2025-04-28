@@ -62,7 +62,7 @@ classdef InternalGravityWaveSpectrum < handle
                 Lz (1,1) {mustBePositive}
                 options.latitude (1,1) double = 33 %set condition. How to modify erro mesage? costume validator
                 options.nModes (1,1) double = 64
-                options.nK (1,1) double = 256           
+                options.nK (1,1) double = 64           
                 options.shouldForceMonotonicDensity {mustBeNumericOrLogical} = 0
             end
 
@@ -133,14 +133,14 @@ classdef InternalGravityWaveSpectrum < handle
         self.GInitial = GInitial;
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
-        %minOrder = 2; 
-        minOrder = floor(log10(2*pi/Kmax));
-        if minOrder<=0
-             minOrder=0;
-        end
+        minOrder = 0; 
+        % minOrder = floor(log10(2*pi/Kmax));
+        % if minOrder<=0
+        %      minOrder=0;
+        % end
 
         % KRadial equally spaced in log scale
-        wavelengthLog=logspace(minOrder,5,self.nK);     
+        wavelengthLog=logspace(minOrder,6,self.nK);     
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
         
@@ -213,81 +213,336 @@ classdef InternalGravityWaveSpectrum < handle
         % with the alternative Internal Wave Spectrum
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        j_star=3;
-        slope=1;
-        GMAmplitude =1;
-        
-        % GM Parameters. 
-        L_gm = 1.3e3; % thermocline exponential scale, meters
-        invT_gm = 5.2e-3; % reference buoyancy frequency, radians/seconds
-        E_gm = 6.3e-5; % non-dimensional energy parameter
-        E_T = L_gm*L_gm*L_gm*invT_gm*invT_gm*E_gm*GMAmplitude;
-        self.E_T =E_T;
 
-        %RIGTH NORMALIZATION DELTA K AND DELTA J
-        % Compute the proper vertical function normalization
-        M = @(j) (j_star.^2 +(j).^2).^((-5/4));
-        M_norm = sum(M(1:1024));
-        M= @(j) ((j_star.^2 +(j).^2).^((-5/4)))/M_norm;
-        self.M=M;
-
-        % sanity check to confirm this is 1
-        %sum(M(1:1024)) 
-
-        %Compute Rossby radius of deformation
-        Lr2 = (self.g.*self.h)/(self.f0*self.f0);
-        self.Lr2 = Lr2;
-
-        % Define the anonymous function B(k,j)
-        B = @(k, indj) (1./(k.^2.* self.Lr2(indj) + 1).^(1 * slope)).*sqrt(self.Lr2(indj));
-        
-
-        % Define the 1D matrix B_norm that integrates B with respect to k
-        % Use the exact value for upper limit K
-        B_norm = ones(self.nModes,1);
-        for jind=(1:length(self.j))                
-            B_norm(jind) = integral(@(k) B(k, self.j(jind)), 0, self.KRadialLog(end));
-        end
-
-        % Redefine the anonymous function B(k,j)
-        B = @(k, jind) (1./(k.^2.* self.Lr2(jind) + 1).^(1 * slope)).*sqrt(self.Lr2(jind))/B_norm(jind);
-        self.B=B;
-
-        % Sanity check to confirm that the integrals are now normalized
-        % for jind=(1:self.nModes-1)                
-        %      integral(@(k) B(k, self.j(jind)), 0, 1)
-        % end
-
-        % Definir a função model_spectrum
-        model_spectrum = @(k, j) (E_T) * B(k, j) * M(j);
-        
-        % Compute Am and Ap
-        TE = amplitudesWithSpectrum(self,model_spectrum);
-
-        self.A2 = TE*2./self.h;
-
-        
-        N2atQuadPoints=self.N2(self.zPerMode);
-        
-        HKE = shiftdim(self.A2.*self.HKEcoef,-1).*self.F.^2;       
-        VKE = shiftdim(self.A2.*self.VKEcoef,-1).*self.G.^2;
-
-        if isscalar(N2atQuadPoints)
-            PE= shiftdim(self.A2.*self.PEcoef,-1).*self.G.^2.*N2atQuadPoints;
-        else
-            PE= shiftdim(self.A2.*self.PEcoef,-1).*self.G.^2.*reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
-        end
-        
-        
-        self.HKE=HKE;
-        self.VKE=VKE;
-        self.PE=PE;       
-        self.TE=TE;
-        self.N2atQuadPoints=N2atQuadPoints;
+        %self = HorizontalWavenumberGMSpectrum(self);
+        %self = NonSeparableSpectrum(self); 
+        self = SeparableSpectrum(self);
 
       end
 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % Spectral functions
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+        function selfUpdated = HorizontalWavenumberGMSpectrum(self)
+            arguments
+                self
+            end
+        
+            % -------------------------
+            % Parameters
+            % -------------------------
+            j_star = 3;
+            slope = 3/2;
+            GMAmplitude = 1;
+        
+            % GM Parameters
+            L_gm = 1.3e3;         % Thermocline exponential scale [m]
+            invT_gm = 5.2e-3;     % Reference buoyancy frequency [rad/s]
+            E_gm = 6.3e-5;        % Non-dimensional energy parameter
+        
+            % Total GM energy
+            E_T = (L_gm^3) * (invT_gm^2) * E_gm * GMAmplitude;
+            self.E_T = E_T;
+        
+            % -------------------------
+            % Vertical mode weighting function M(j)
+            % -------------------------
+            M_raw = @(j) (j_star^2 + j.^2).^(-5/4);
+            M_norm = sum(M_raw(1:1024));
+            M = @(j) M_raw(j) / M_norm;
+            self.M = M;
+        
+            % Sanity check: ensure M sums to 1
+            % sum(M(1:1024))
+        
+            % -------------------------
+            % Compute Rossby radius of deformation
+            % -------------------------
+            Lr2 = (self.g .* self.h) ./ (self.f0 ^ 2);
+            self.Lr2 = Lr2;
+        
+            % -------------------------
+            % Define unnormalized B(k,j)
+            % -------------------------
+            B_unnormalized = @(k, jInd) ...
+                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k) + 1)).^slope) .* ...
+                 sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k));
+        
+            % Integration bounds
+            kmin = min(self.KRadialLog(1));
+            kmax = max(self.KRadialLog(end));
+        
+            % -------------------------
+            % Normalize B(k,j)
+            % -------------------------
+            B_norm = ones(self.nModes, 1);
+            for jIdx = 1:length(self.j)
+                B_norm(jIdx) = integral(@(k) B_unnormalized(k, self.j(jIdx)), kmin, kmax);
+            end
+        
+            B = @(k, jInd) ...
+                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k)) + 1).^slope) .* ...
+                sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k)) ./ ...
+                B_norm(jInd);
+            self.B = B;
+        
+            % -------------------------
+            % Sanity check: confirm integrals are normalized
+            test_integrals = zeros(self.nModes - 1, 1);
+            for jIdx = 1:self.nModes - 1
+                test_integrals(jIdx) = integral(@(k) B(k, self.j(jIdx)), kmin, kmax);
+            end
+            % Uncomment to view:
+            % disp('Sanity check integrals:'), disp(test_integrals)
+        
+            % -------------------------
+            % Define model spectrum
+            % -------------------------
+            model_spectrum = @(k,jInd) E_T * B(k, jInd) * M(jInd);
+        
+            % -------------------------
+            % Compute total energy (A2) using spectrum
+            % -------------------------
+            TE = amplitudesWithSpectrum(self, model_spectrum);
+            self.A2 = 2 * TE ./ self.h;
+        
+            % -------------------------
+            % Compute energy components
+            % -------------------------
+            N2atQuadPoints = self.N2(self.zPerMode);
+        
+            HKE = shiftdim(self.A2 .* self.HKEcoef, -1) .* self.F.^2;
+            VKE = shiftdim(self.A2 .* self.VKEcoef, -1) .* self.G.^2;
+        
+            if isscalar(N2atQuadPoints)
+                PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* N2atQuadPoints;
+            else
+                PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* ...
+                     reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
+            end
+        
+            % -------------------------
+            % Store results in object
+            % -------------------------
+            self.HKE = HKE;
+            self.VKE = VKE;
+            self.PE = PE;
+            self.TE = TE;
+            self.N2atQuadPoints = N2atQuadPoints;
+        
+            selfUpdated = self;
+        end
+
+   
+
+        function selfUpdated = NonSeparableSpectrum(self)
+            arguments
+                self
+            end
+        
+            % -------------------------
+            % Parameters
+            % -------------------------
+            j_star = 3;
+            slope = 1;
+            GMAmplitude = 1;
+        
+            % GM Parameters
+            L_gm = 1.3e3;           % Thermocline exponential scale [m]
+            invT_gm = 5.2e-3;       % Reference buoyancy frequency [rad/s]
+            E_gm = 6.3e-5;          % Non-dimensional energy parameter
+        
+            % Total GM energy
+            E_T = (L_gm^3) * (invT_gm^2) * E_gm * GMAmplitude;
+            self.E_T = E_T;
+        
+            % -------------------------
+            % Compute Rossby radius of deformation
+            % -------------------------
+            Lr2 = (self.g .* self.h) ./ (self.f0 ^ 2);
+            self.Lr2 = Lr2;
+            k_star2 = 1 ./ Lr2(3,:); % Using mode-3 deformation radius (Leticia 04/02/2025)
+        
+            % -------------------------
+            % Define unnormalized spectral shape B(k,j)
+            % -------------------------
+            B_unnormalized = @(k, jInd) 1 ./ ...
+                (k.^2 + ...
+                (interp1(self.KRadialLog, Lr2(jInd,:), k)).^(-1) + ...
+                interp1(self.KRadialLog, k_star2, k)).^slope;
+        
+            % Integration bounds
+            kmin = min(self.KRadialLog(1));
+            kmax = max(self.KRadialLog(end));
+        
+            % -------------------------
+            % Normalize B(k,j)
+            % -------------------------
+            B_norm = ones(self.nModes, 1);
+            for jIdx = 1:length(self.j)
+                B_norm(jIdx) = integral(@(k) B_unnormalized(k, self.j(jIdx)), kmin, kmax);
+            end
+        
+            % Normalized B(k,j)
+            B = @(k, jInd) B_unnormalized(k, jInd) ./ B_norm(jInd);
+            self.B = B;
+
+            % -------------------------
+            % Sanity check: Ensure normalization
+            % -------------------------
+            test_integrals = zeros(self.nModes, 1);
+            for jIdx = 1:self.nModes
+                test_integrals(jIdx) = integral(@(k) B(k, self.j(jIdx)), kmin, kmax);
+            end
+            % Uncomment the next line if you want to see the test output
+            % disp('Sanity check integrals:'), disp(test_integrals)
+        
+            % -------------------------
+            % Define model spectrum
+            % -------------------------
+            model_spectrum = @(k, j) (E_T / self.nModes) * B(k, j);
+        
+            % -------------------------
+            % Compute total energy (A2) using spectrum
+            % -------------------------
+            TE = amplitudesWithSpectrum(self, model_spectrum);
+            self.A2 = 2 * TE ./ self.h;
+        
+            % -------------------------
+            % Compute energy components
+            % -------------------------
+            N2atQuadPoints = self.N2(self.zPerMode);
+        
+            HKE = shiftdim(self.A2 .* self.HKEcoef, -1) .* self.F.^2;
+            VKE = shiftdim(self.A2 .* self.VKEcoef, -1) .* self.G.^2;
+        
+            if isscalar(N2atQuadPoints)
+                PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* N2atQuadPoints;
+            else
+                PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* ...
+                     reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
+            end
+        
+            % -------------------------
+            % Store results in object
+            % -------------------------
+            self.HKE = HKE;
+            self.VKE = VKE;
+            self.PE = PE;
+            self.TE = TE;
+            self.N2atQuadPoints = N2atQuadPoints;
+        
+            selfUpdated = self;
+        end
+
+
+
+
+        function selfUpdated = SeparableSpectrum(self)
+            arguments
+                self
+            end
+        
+            % -------------------------
+            % Parameters
+            % -------------------------
+            j_star = 3;
+            slopeK = 1;
+            slopej=1;
+            GMAmplitude = 1;
+        
+            % GM Parameters
+            L_gm = 1.3e3;           % Thermocline exponential scale [m]
+            invT_gm = 5.2e-3;       % Reference buoyancy frequency [rad/s]
+            E_gm = 6.3e-5;          % Non-dimensional energy parameter
+        
+            % Total GM energy
+            E_T = (L_gm^3) * (invT_gm^2) * E_gm * GMAmplitude;
+            self.E_T = E_T;
+        
+            % -------------------------
+            % Compute Rossby radius of deformation
+            % -------------------------
+            Lr2 = (self.g .* self.h) ./ (self.f0 ^ 2);
+            self.Lr2 = Lr2;
+            k_star2 = 1 ./ Lr2(3,:); % Using mode-3 deformation radius (Leticia 04/02/2025)
+        
+            % -------------------------
+            % Define unnormalized spectral shape B(k,j)
+            % -------------------------
+            B_unnormalized = @(k, jInd) 1 ./ ...
+               ( (k.^2 + interp1(self.KRadialLog, k_star2, k)).^(slopeK).*...
+                    ((interp1(self.KRadialLog, Lr2(jInd,:), k)).^(-2) + ...
+                    (interp1(self.KRadialLog, Lr2(3,:), k)).^(-2)).^(slopej) );
+                
+               
+        
+            % Integration bounds
+            kmin = min(self.KRadialLog(1));
+            kmax = max(self.KRadialLog(end));
+        
+            % -------------------------
+            % Normalize B(k,j)
+            % -------------------------
+            B_norm = ones(self.nModes, 1);
+            for jIdx = 1:length(self.j)
+                B_norm(jIdx) = integral(@(k) B_unnormalized(k, self.j(jIdx)), kmin, kmax);
+            end
+        
+            % Normalized B(k,j)
+            B = @(k, jInd) B_unnormalized(k, jInd) ./ B_norm(jInd);
+            self.B = B;
+
+            % -------------------------
+            % Sanity check: Ensure normalization
+            % -------------------------
+            test_integrals = zeros(self.nModes, 1);
+            for jIdx = 1:self.nModes
+                test_integrals(jIdx) = integral(@(k) B(k, self.j(jIdx)), kmin, kmax);
+            end
+            % Uncomment the next line if you want to see the test output
+            % disp('Sanity check integrals:'), disp(test_integrals)
+        
+            % -------------------------
+            % Define model spectrum
+            % -------------------------
+            model_spectrum = @(k, j) (E_T / self.nModes) * B(k, j);
+        
+            % -------------------------
+            % Compute total energy (A2) using spectrum
+            % -------------------------
+            TE = amplitudesWithSpectrum(self, model_spectrum);
+            self.A2 = 2 * TE ./ self.h;
+        
+            % -------------------------
+            % Compute energy components
+            % -------------------------
+            N2atQuadPoints = self.N2(self.zPerMode);
+        
+            HKE = shiftdim(self.A2 .* self.HKEcoef, -1) .* self.F.^2;
+            VKE = shiftdim(self.A2 .* self.VKEcoef, -1) .* self.G.^2;
+        
+            if isscalar(N2atQuadPoints)
+                PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* N2atQuadPoints;
+            else
+                PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* ...
+                     reshape(N2atQuadPoints, [self.nZ, 1, self.nK]);
+            end
+        
+            % -------------------------
+            % Store results in object
+            % -------------------------
+            self.HKE = HKE;
+            self.VKE = VKE;
+            self.PE = PE;
+            self.TE = TE;
+            self.N2atQuadPoints = N2atQuadPoints;
+        
+            selfUpdated = self;
+        end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
@@ -395,7 +650,12 @@ classdef InternalGravityWaveSpectrum < handle
                 end                  
             end
 
-            HKEatk=HKEatk./self.dKLog;
+            if options.mask==1
+                dKLog = self.dKLog;
+                HKEatk=HKEatk./dKLog(1:self.cutoff_k);
+            else
+                HKEatk=HKEatk./self.dKLog;
+            end
 
             %interp on the KRadial vector specified by the user
             if  ~isempty(options.KRadial)
@@ -464,14 +724,14 @@ classdef InternalGravityWaveSpectrum < handle
 
         %%%%%%%%%%%%%%%
 
-        function [S,EnergyFrequency] = energyAtFrequencies(self,energyTerm,z,options)
+        function [S,EnergyFrequency] = energyAtFrequencies(self,z,energyTerm,options)
             arguments
                 self
-                energyTerm %options are: 'TE','HKE','VKE' and 'PE'
                 z
+                energyTerm %options are: 'TE','HKE','VKE' and 'PE'                
                 options.omegaVector = linspace(self.f0,0.8*sqrt(self.N2max),self.nK);
                 options.spectrumType
-                options.plot = true
+                options.plot = false
             end
 
             if strcmp(energyTerm, 'TE')

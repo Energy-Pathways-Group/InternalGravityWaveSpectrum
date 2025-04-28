@@ -23,7 +23,7 @@ function [totalEnergyPerComponent] = amplitudesWithSpectrum(self,spectrum)
                     else
                         % Others Intervals
                         lowerBound = upperBound;
-                        upperBound = self.KRadialLog(iK) + (self.KRadialLog(iK + 1) - self.KRadialLog(iK) )/2;
+                        upperBound = self.KRadialLog(iK) + (self.KRadialLog(iK + 1) - self.KRadialLog(iK))/2;
                     end
 
                     % Integral 
@@ -31,7 +31,6 @@ function [totalEnergyPerComponent] = amplitudesWithSpectrum(self,spectrum)
                     totalEnergyPerComponent(iJ, iK) = integralValue;                    
                 end
             end
-
 
 
 
