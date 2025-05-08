@@ -14,8 +14,8 @@ function [totalEnergyPerComponent] = amplitudesWithSpectrum(self,spectrum)
                 for iK = 1:self.nK
                     if iK == 1
                         % First Interval
-                        lowerBound = 0;  % Use um valor pequeno para evitar zero
-                        upperBound = self.KRadialLog(iK)/2;
+                        lowerBound = self.KRadialLog(iK);  % Use um valor pequeno para evitar zero
+                        upperBound = self.KRadialLog(iK+1)/2;
                     elseif iK == length(self.KRadialLog)
                         % Last Interval
                         lowerBound = upperBound;

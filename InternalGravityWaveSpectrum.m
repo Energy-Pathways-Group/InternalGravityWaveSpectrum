@@ -143,7 +143,7 @@ classdef InternalGravityWaveSpectrum < handle
         wavelengthLog=logspace(minOrder,6,self.nK);     
         KRadialLog=fliplr((2*pi)./wavelengthLog);
         self.KRadialLog = KRadialLog;
-        
+        self.KRadialLog(1)=0.5*self.KRadialLog(1);
 
         % % KRadial from frequency
         % omegaVector = linspace(self.f0*1.005,0.8*sqrt(self.N2max),32);
@@ -216,7 +216,7 @@ classdef InternalGravityWaveSpectrum < handle
 
         %self = HorizontalWavenumberGMSpectrum(self);
         %self = NonSeparableSpectrum(self); 
-        self = SeparableSpectrum(self);
+        %self = SeparableSpectrum(self);
 
       end
 
@@ -226,9 +226,12 @@ classdef InternalGravityWaveSpectrum < handle
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function selfUpdated = HorizontalWavenumberGMSpectrum(self)
+        function selfUpdated = HorizontalWavenumberGMSpectrum(self,parameters)
+        
             arguments
                 self
+                parameters.j_star = 3;
+                parameters.slope = 3;
             end
         
             % -------------------------
@@ -274,6 +277,8 @@ classdef InternalGravityWaveSpectrum < handle
             % Integration bounds
             kmin = min(self.KRadialLog(1));
             kmax = max(self.KRadialLog(end));
+            %kmin=10^(-13);
+            %kmax=1;
         
             % -------------------------
             % Normalize B(k,j)
@@ -284,19 +289,18 @@ classdef InternalGravityWaveSpectrum < handle
             end
         
             B = @(k, jInd) ...
-                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k)) + 1).^slope) .* ...
-                sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k)) ./ ...
-                B_norm(jInd);
-            self.B = B;
+                ((1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k) + 1)).^slope) .* ...
+                 sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k)))./B_norm(jInd);
+                self.B = B;
         
             % -------------------------
             % Sanity check: confirm integrals are normalized
-            test_integrals = zeros(self.nModes - 1, 1);
-            for jIdx = 1:self.nModes - 1
+            test_integrals = zeros(self.nModes , 1);
+            for jIdx = 1:self.nModes 
                 test_integrals(jIdx) = integral(@(k) B(k, self.j(jIdx)), kmin, kmax);
             end
             % Uncomment to view:
-            % disp('Sanity check integrals:'), disp(test_integrals)
+             disp('Sanity check integrals:'), disp(test_integrals)
         
             % -------------------------
             % Define model spectrum
@@ -542,6 +546,145 @@ classdef InternalGravityWaveSpectrum < handle
             self.N2atQuadPoints = N2atQuadPoints;
         
             selfUpdated = self;
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        %
+        % Fitting Spectral functions 
+        %
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function [energySpectrumModel,self] = gmSpectrumFunctionHandle(self,params)
+        
+            arguments
+                self
+                params 
+                %params should be [j_star,slope,GMAmplitude]
+                %params.j_star = 3;
+                %params.slope = 3/2;
+                %GMAmplitude = 1;
+            end
+        
+            % -------------------------
+            % Parameters
+            % -------------------------
+            j_star = params(1);
+            slope = params(2);
+            GMAmplitude = params(3);
+        
+            % GM Parameters
+            L_gm = 1.3e3;         % Thermocline exponential scale [m]
+            invT_gm = 5.2e-3;     % Reference buoyancy frequency [rad/s]
+            E_gm = 6.3e-5;        % Non-dimensional energy parameter
+        
+            % Total GM energy
+            E_T = (L_gm^3) * (invT_gm^2) * E_gm * GMAmplitude;
+            self.E_T = E_T;
+        
+            % -------------------------
+            % Vertical mode weighting function M(j)
+            % -------------------------
+            M_raw = @(j) (j_star^2 + j.^2).^(-5/4);
+            M_norm = sum(M_raw(1:1024));
+            M = @(j) M_raw(j) / M_norm;
+            self.M = M;
+        
+            % Sanity check: ensure M sums to 1
+            % sum(M(1:1024))
+        
+            % -------------------------
+            % Compute Rossby radius of deformation
+            % -------------------------
+            Lr2 = (self.g .* self.h) ./ (self.f0 ^ 2);
+            self.Lr2 = Lr2;
+        
+            % -------------------------
+            % Define unnormalized B(k,j)
+            % -------------------------
+            B_unnormalized = @(k, jInd) ...
+                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k) + 1)).^slope) .* ...
+                 sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k));
+        
+            % Integration bounds
+            kmin = min(self.KRadialLog(1));
+            %kmin=1.2566e-05;
+            kmax = max(self.KRadialLog(end));
+            %kmax=3.5186e-04;
+        
+            % -------------------------
+            % Normalize B(k,j)
+            % -------------------------
+            B_norm = ones(self.nModes, 1);
+            for jIdx = 1:length(self.j)
+                B_norm(jIdx) = integral(@(k) B_unnormalized(k, self.j(jIdx)), kmin, kmax);
+            end
+        
+            B = @(k, jInd) ...
+                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k)) + 1).^slope) .* ...
+                sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k)) ./ ...
+                B_norm(jInd);
+            self.B = B;
+        
+            % -------------------------
+            % Sanity check: confirm integrals are normalized
+            test_integrals = zeros(self.nModes - 1, 1);
+            for jIdx = 1:self.nModes - 1
+                test_integrals(jIdx) = integral(@(k) B(k, self.j(jIdx)), kmin, kmax);
+            end
+            % Uncomment to view:
+            % disp('Sanity check integrals:'), disp(test_integrals)
+        
+            % -------------------------
+            % Define model spectrum
+            % -------------------------
+            energySpectrumModel = @(k,jInd) self.E_T * self.B(k, jInd) * self.M(jInd);      
+  
+        
+            selfUpdated = self;
+        end
+
+
+        function val = objectiveFunction(self,params,k,j,E_model)
+            arguments
+                self
+                params
+                k
+                j
+                E_model
+            end
+            energySpectrum = gmSpectrumFunctionHandle(self,params);
+            limk=round((length(k) * (2/3)));
+            limj=round((length(j) * (2/3)));
+            dk = (k(2)-k(1));
+
+            for indj = 1:limj-1
+                for indk = 1:limk
+                    Ekj(indj,indk) = energySpectrum(k(indk)+(dk/1.9),j(indj+1));
+                end
+            end
+            E_model=E_model(2:limj,1:limk);
+            %Ekj = energySpectrum(k,j);
+            % +1/2 dk
+
+            if(1)
+                % First pcolor plot
+                subplot(1, 2, 1);
+                jpcolor(log(E_model));                     
+                colorbar;
+                %clim([-18 -2])
+                title('Model');                
+                
+                % Second pcolor plot
+                subplot(1, 2, 2);
+                jpcolor(log(Ekj));
+                colorbar;
+                %clim([-18 -2])
+                title('Toolbox');
+            end
+
+
+
+            val = mean((E_model(:) - Ekj(:)).^2);
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
