@@ -619,10 +619,11 @@ classdef InternalGravityWaveSpectrum < handle
                 B_norm(jIdx) = integral(@(k) B_unnormalized(k, self.j(jIdx)), kmin, kmax);
             end
         
-            B = @(k, jInd) ...
-                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k)) + 1).^slope) .* ...
-                sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k)) ./ ...
-                B_norm(jInd);
+            % B = @(k, jInd) ...
+            %     (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k) + 1)).^slope) .* ...
+            %      sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k)) / ...
+            %     B_norm(jInd);
+            B = @(k, jInd) B_unnormalized(k,jInd)/B_norm(jInd);
             self.B = B;
         
             % -------------------------
@@ -633,12 +634,21 @@ classdef InternalGravityWaveSpectrum < handle
             end
             % Uncomment to view:
             % disp('Sanity check integrals:'), disp(test_integrals)
+            % disp('Sanity check total integrals:'), disp(sum(test_integrals))
         
             % -------------------------
             % Define model spectrum
             % -------------------------
             energySpectrumModel = @(k,jInd) self.E_T * self.B(k, jInd) * self.M(jInd);      
-  
+
+            % Sanity check: confirm integrals are normalized
+            test_integrals = zeros(self.nModes - 1, 1);
+            for jIdx = 1:self.nModes - 1
+                test_integrals(jIdx) = integral(@(k) energySpectrumModel(k, self.j(jIdx)), kmin, kmax);
+            end
+            % Uncomment to view:
+            % disp('Sanity check integrals:'), disp(test_integrals)
+            disp('Sanity check total integrals:'), disp(sum(test_integrals))
         
             selfUpdated = self;
         end
