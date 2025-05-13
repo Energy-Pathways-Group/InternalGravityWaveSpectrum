@@ -597,13 +597,13 @@ classdef InternalGravityWaveSpectrum < handle
             % -------------------------
             Lr2 = (self.g .* self.h) ./ (self.f0 ^ 2);
             self.Lr2 = Lr2;
-        
+            Lr2_func = @(k,jInd) interp1(self.KRadialLog, Lr2(jInd,:), k);
+
             % -------------------------
             % Define unnormalized B(k,j)
             % -------------------------
             B_unnormalized = @(k, jInd) ...
-                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k) + 1)).^slope) .* ...
-                 sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k));
+                sqrt(Lr2_func(k, jInd)) ./ ((k.^2 .* Lr2_func(k, jInd) + 1).^slope);
         
             % Integration bounds
             kmin = min(self.KRadialLog(1));
@@ -618,12 +618,7 @@ classdef InternalGravityWaveSpectrum < handle
             for jIdx = 1:length(self.j)
                 B_norm(jIdx) = integral(@(k) B_unnormalized(k, self.j(jIdx)), kmin, kmax);
             end
-        
-            B = @(k, jInd) ...
-                (1 ./ (k.^2 .* (interp1(self.KRadialLog, Lr2(jInd,:), k)) + 1).^slope) .* ...
-                sqrt(interp1(self.KRadialLog, Lr2(jInd,:), k)) ./ ...
-                B_norm(jInd);
-            self.B = B;
+            self.B = @(k, jInd) B_unnormalized(k,jInd)/B_norm(jInd);
         
             % -------------------------
             % Sanity check: confirm integrals are normalized
@@ -633,14 +628,21 @@ classdef InternalGravityWaveSpectrum < handle
             end
             % Uncomment to view:
             % disp('Sanity check integrals:'), disp(test_integrals)
+            % disp('Sanity check total integrals:'), disp(sum(test_integrals))
         
             % -------------------------
             % Define model spectrum
             % -------------------------
             energySpectrumModel = @(k,jInd) self.E_T * self.B(k, jInd) * self.M(jInd);      
-  
-        
-            selfUpdated = self;
+
+            % Sanity check: confirm integrals are normalized
+            test_integrals = zeros(self.nModes - 1, 1);
+            for jIdx = 1:self.nModes - 1
+                test_integrals(jIdx) = integral(@(k) energySpectrumModel(k, self.j(jIdx)), kmin, kmax);
+            end
+            % Uncomment to view:
+            % disp('Sanity check integrals:'), disp(test_integrals)
+            % disp('Sanity check total integrals:'), disp(sum(test_integrals))
         end
 
 
@@ -653,20 +655,21 @@ classdef InternalGravityWaveSpectrum < handle
                 E_model
             end
             energySpectrum = gmSpectrumFunctionHandle(self,params);
-            limk=round((length(k) * (2/3)));
-            limj=round((length(j) * (2/3)));
+            % limk=round((length(k) * (2/3)));
+            % limj=round((length(j) * (2/3)));
             dk = (k(2)-k(1));
 
-            for indj = 1:limj-1
-                for indk = 1:limk
-                    Ekj(indj,indk) = energySpectrum(k(indk)+(dk/1.9),j(indj+1));
+            Ejk = zeros(length(j),length(k));
+            for indj = 1:length(j)
+                for indk = 1:length(k)
+                    Ejk(indj,indk) = energySpectrum(k(indk)+(dk/1.9),j(indj));
                 end
             end
-            E_model=E_model(2:limj,1:limk);
+            % E_model=E_model(2:limj,1:limk);
             %Ekj = energySpectrum(k,j);
             % +1/2 dk
 
-            if(1)
+            if(0)
                 % First pcolor plot
                 subplot(1, 2, 1);
                 jpcolor(log(E_model));                     
@@ -676,7 +679,7 @@ classdef InternalGravityWaveSpectrum < handle
                 
                 % Second pcolor plot
                 subplot(1, 2, 2);
-                jpcolor(log(Ekj));
+                jpcolor(log(Ejk));
                 colorbar;
                 %clim([-18 -2])
                 title('Toolbox');
@@ -684,7 +687,7 @@ classdef InternalGravityWaveSpectrum < handle
 
 
 
-            val = mean((E_model(:) - Ekj(:)).^2);
+            val = mean((E_model(:) - Ejk(:)).^2);
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
