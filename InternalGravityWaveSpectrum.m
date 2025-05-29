@@ -133,7 +133,7 @@ classdef InternalGravityWaveSpectrum < handle
         self.GInitial = GInitial;
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
-        minOrder = 0; 
+        minOrder = 2; 
         % minOrder = floor(log10(2*pi/Kmax));
         % if minOrder<=0
         %      minOrder=0;
@@ -554,7 +554,7 @@ classdef InternalGravityWaveSpectrum < handle
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function [energySpectrumModel,self] = gmSpectrumFunctionHandle(self,params)
+        function [model,self] = gmSpectrumFunctionHandle(self,params)
         
             arguments
                 self
@@ -570,7 +570,11 @@ classdef InternalGravityWaveSpectrum < handle
             % -------------------------
             j_star = params(1);
             slope = params(2);
-            GMAmplitude = params(3);
+            slope_j = params(3);
+            GMAmplitude = params(4);
+            c=params(5);
+            A=params(6);
+            
         
             % GM Parameters
             L_gm = 1.3e3;         % Thermocline exponential scale [m]
@@ -584,7 +588,7 @@ classdef InternalGravityWaveSpectrum < handle
             % -------------------------
             % Vertical mode weighting function M(j)
             % -------------------------
-            M_raw = @(j) (j_star^2 + j.^2).^(-5/4);
+            M_raw = @(j) (j_star^2 + j.^2).^(slope_j);
             M_norm = sum(M_raw(1:1024));
             M = @(j) M_raw(j) / M_norm;
             self.M = M;
@@ -624,17 +628,18 @@ classdef InternalGravityWaveSpectrum < handle
             % Sanity check: confirm integrals are normalized
             test_integrals = zeros(self.nModes - 1, 1);
             for jIdx = 1:self.nModes - 1
-                test_integrals(jIdx) = integral(@(k) B(k, self.j(jIdx)), kmin, kmax);
+                test_integrals(jIdx) = integral(@(k) self.B(k, self.j(jIdx)), kmin, kmax);
             end
             % Uncomment to view:
             % disp('Sanity check integrals:'), disp(test_integrals)
             % disp('Sanity check total integrals:'), disp(sum(test_integrals))
         
             % -------------------------
-            % Define model spectrum
+            % Define IW spectrum  model
             % -------------------------
-            energySpectrumModel = @(k,jInd) self.E_T * self.B(k, jInd) * self.M(jInd);      
+            energySpectrumModel = @(k,jInd) self.E_T * self.B(k, jInd) * self.M(jInd);
 
+           
             % Sanity check: confirm integrals are normalized
             test_integrals = zeros(self.nModes - 1, 1);
             for jIdx = 1:self.nModes - 1
@@ -643,6 +648,26 @@ classdef InternalGravityWaveSpectrum < handle
             % Uncomment to view:
             % disp('Sanity check integrals:'), disp(test_integrals)
             % disp('Sanity check total integrals:'), disp(sum(test_integrals))
+
+            % -------------------------
+            % Define model M2
+            % -------------------------
+            omegaFunc= @(k,jInd) interp1(self.KRadialLog, self.omega(jInd,:), k);
+
+            M2omega= 2*pi/(12.42*3600);
+            %modelM2= @(k,jInd) (A^2*c)./((omegaFunc(k,jInd)-M2omega)^2 +c^2);
+            j0=3.5; 
+            d=1;
+            modelM2 = @(k,j) (A^2 * c^2) ./ ((omegaFunc(k,j) - M2omega).^2 + c^2) .* ...
+                 (1 ./ ((j - j0).^2 + d^2));
+
+            % -------------------------
+            % Define complete model 
+            % -------------------------
+            model = @(k,jInd) energySpectrumModel(k,jInd) + modelM2(k,jInd); 
+            %model = @(k,jInd) modelM2(k,jInd);
+            %model = @(k,jInd) energySpectrumModel(k,jInd);
+
         end
 
 
@@ -669,25 +694,26 @@ classdef InternalGravityWaveSpectrum < handle
             %Ekj = energySpectrum(k,j);
             % +1/2 dk
 
-            if(0)
+            if(1)
                 % First pcolor plot
                 subplot(1, 2, 1);
                 jpcolor(log(E_model));                     
                 colorbar;
-                %clim([-18 -2])
+                clim([2 10])
                 title('Model');                
                 
                 % Second pcolor plot
                 subplot(1, 2, 2);
                 jpcolor(log(Ejk));
                 colorbar;
-                %clim([-18 -2])
+                clim([2 10])
                 title('Toolbox');
             end
 
 
 
-            val = mean((E_model(:) - Ejk(:)).^2);
+            %val = mean((E_model(:) - Ejk(:)).^2);
+            val = mean((log(E_model(:)) - log(Ejk(:))).^2);
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -878,6 +904,7 @@ classdef InternalGravityWaveSpectrum < handle
                 options.omegaVector = linspace(self.f0,0.8*sqrt(self.N2max),self.nK);
                 options.spectrumType
                 options.plot = false
+                options.mask = true
             end
 
             if strcmp(energyTerm, 'TE')
@@ -890,7 +917,8 @@ classdef InternalGravityWaveSpectrum < handle
             
             elseif strcmp(energyTerm, 'VKE')
                 data = self.VKE;
-                energy = squeeze(scatteredInterpolation(self, data, z, self.KRadialLog, 1:self.nModes)); 
+                energy = squeeze(scatteredInterpolation(self, data, z, self.KRadialLog, 1:self.nModes));                 
+
             elseif strcmp(energyTerm, 'PE')
                 data = self.PE;
                 energy = squeeze(scatteredInterpolation(self, data, z, self.KRadialLog, 1:self.nModes)); 
