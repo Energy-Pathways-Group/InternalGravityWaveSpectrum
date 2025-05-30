@@ -442,9 +442,6 @@ classdef InternalGravityWaveSpectrum < handle
             selfUpdated = self;
         end
 
-
-
-
         function selfUpdated = SeparableSpectrum(self)
             arguments
                 self
@@ -553,6 +550,47 @@ classdef InternalGravityWaveSpectrum < handle
         % Fitting Spectral functions 
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+        function S_normalized = normalizeSpectrum(self,S)
+            % Takes a function_handle S with arguments (k,j) and returns
+            % a function_handle with the same arguments normalized to GM
+            % energy level 1.
+            kmin = min(self.KRadialLog(1));
+            kmax = max(self.KRadialLog(end));
+
+            S_norm = ones(self.nModes, 1);
+            for jIdx = 1:length(self.j)
+                S_norm(jIdx) = integral(@(k) S(k, self.j(jIdx)), kmin, kmax);
+            end
+
+            L_gm = 1.3e3;         % Thermocline exponential scale [m]
+            invT_gm = 5.2e-3;     % Reference buoyancy frequency [rad/s]
+            E_gm = 6.3e-5;        % Non-dimensional energy parameter
+            E = (L_gm^3) * (invT_gm^2) * E_gm; % Total GM energy
+
+            norm = E/sum(S_norm);
+            S_normalized = @(k, jInd) norm*S(k,jInd);
+        end
+
+        function S = gmSpectrum(self,p)
+            arguments
+                self 
+                p.j_star = 3;
+                p.slope_j = 1;
+                p.slope_k = 1;
+                p.A = 1;
+            end
+
+            % -------------------------
+            % Compute Rossby radius of deformation
+            % -------------------------
+            Lr2_ = (self.g .* self.h) ./ (self.f0 ^ 2);
+            Lr2_func = @(k,jInd) interp1(self.KRadialLog, Lr2_(jInd,:), k);
+
+            S_unnorm = @(k,jInd) sqrt(Lr2_func(k, jInd)) ./ ( ((k.^2 .* Lr2_func(k, jInd) + 1).^p.slope_k) .* (p.j_star^2 + self.j(jInd).^2).^(p.slope_j) );
+            S_normalized = self.normalizeSpectrum(S_unnorm);
+            S = @(k,jInd) p.A * S_normalized(k,jInd);
+        end
 
         function [model,self] = gmSpectrumFunctionHandle(self,params)
         
