@@ -573,6 +573,7 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
         function S = gmSpectrum(self,p)
+            
             arguments
                 self 
                 p.j_star = 3;
@@ -592,132 +593,73 @@ classdef InternalGravityWaveSpectrum < handle
             S = @(k,jInd) p.A * S_normalized(k,jInd);
         end
 
-        function [model,self] = gmSpectrumFunctionHandle(self,params)
         
+        function S = generalSpectrum(self,p)
             arguments
-                self
-                params 
-                %params should be [j_star,slope,GMAmplitude]
-                %params.j_star = 3;
-                %params.slope = 3/2;
-                %GMAmplitude = 1;
-            end
-        
-            % -------------------------
-            % Parameters
-            % -------------------------
-            j_star = params(1);
-            slope = params(2);
-            slope_j = params(3);
-            GMAmplitude = params(4);
-            c=params(5);
-            A=params(6);
+                self 
+                p.j_star = 3;
+                p.slope_j = 1;
+                p.slope_k = 1;
+                p.A = 1;
+            end                
             
-        
-            % GM Parameters
-            L_gm = 1.3e3;         % Thermocline exponential scale [m]
-            invT_gm = 5.2e-3;     % Reference buoyancy frequency [rad/s]
-            E_gm = 6.3e-5;        % Non-dimensional energy parameter
-        
-            % Total GM energy
-            E_T = (L_gm^3) * (invT_gm^2) * E_gm * GMAmplitude;
-            self.E_T = E_T;
-        
-            % -------------------------
-            % Vertical mode weighting function M(j)
-            % -------------------------
-            M_raw = @(j) (j_star^2 + j.^2).^(slope_j);
-            M_norm = sum(M_raw(1:1024));
-            M = @(j) M_raw(j) / M_norm;
-            self.M = M;
-        
-            % Sanity check: ensure M sums to 1
-            % sum(M(1:1024))
-        
             % -------------------------
             % Compute Rossby radius of deformation
             % -------------------------
-            Lr2 = (self.g .* self.h) ./ (self.f0 ^ 2);
-            self.Lr2 = Lr2;
-            Lr2_func = @(k,jInd) interp1(self.KRadialLog, Lr2(jInd,:), k);
+            Lr2_ = (self.g .* self.h) ./ (self.f0 ^ 2);
+            %Lr2_func = @(jInd,k) interp1(self.KRadialLog, Lr2_(jInd,:), k);
+            Lr2_func = @(jInd, k) interp2(self.KRadialLog, self.j, Lr2_, k, jInd);
 
             % -------------------------
-            % Define unnormalized B(k,j)
+            % Compute k*^2 using mode-3 Rossby radius of deformations 
             % -------------------------
-            B_unnormalized = @(k, jInd) ...
-                sqrt(Lr2_func(k, jInd)) ./ ((k.^2 .* Lr2_func(k, jInd) + 1).^slope);
-        
-            % Integration bounds
-            kmin = min(self.KRadialLog(1));
-            %kmin=1.2566e-05;
-            kmax = max(self.KRadialLog(end));
-            %kmax=3.5186e-04;
+            jVec = p.j_star * ones(size(self.KRadialLog));  % vetor do mesmo tamanho que K
+            kstar2 = squeeze(1 ./ Lr2_func(jVec, self.KRadialLog));
+            kstar2_func = @(k) interp1(self.KRadialLog, kstar2, k);
         
             % -------------------------
-            % Normalize B(k,j)
+            % Define spectral function S(k,j)
             % -------------------------
-            B_norm = ones(self.nModes, 1);
-            for jIdx = 1:length(self.j)
-                B_norm(jIdx) = integral(@(k) B_unnormalized(k, self.j(jIdx)), kmin, kmax);
-            end
-            self.B = @(k, jInd) B_unnormalized(k,jInd)/B_norm(jInd);
-        
-            % -------------------------
-            % Sanity check: confirm integrals are normalized
-            test_integrals = zeros(self.nModes - 1, 1);
-            for jIdx = 1:self.nModes - 1
-                test_integrals(jIdx) = integral(@(k) self.B(k, self.j(jIdx)), kmin, kmax);
-            end
-            % Uncomment to view:
-            % disp('Sanity check integrals:'), disp(test_integrals)
-            % disp('Sanity check total integrals:'), disp(sum(test_integrals))
-        
-            % -------------------------
-            % Define IW spectrum  model
-            % -------------------------
-            energySpectrumModel = @(k,jInd) self.E_T * self.B(k, jInd) * self.M(jInd);
+            S_unnorm = @(k, jInd) 1 ./ ...
+               ( (k.^2./kstar2_func(k) + 1).^(p.slope_k).*...
+               (Lr2_func(jInd,k)./Lr2_func(p.j_star,k)).^(p.slope_j) );
 
-           
-            % Sanity check: confirm integrals are normalized
-            test_integrals = zeros(self.nModes - 1, 1);
-            for jIdx = 1:self.nModes - 1
-                test_integrals(jIdx) = integral(@(k) energySpectrumModel(k, self.j(jIdx)), kmin, kmax);
-            end
-            % Uncomment to view:
-            % disp('Sanity check integrals:'), disp(test_integrals)
-            % disp('Sanity check total integrals:'), disp(sum(test_integrals))
-
-            % -------------------------
-            % Define model M2
-            % -------------------------
-            omegaFunc= @(k,jInd) interp1(self.KRadialLog, self.omega(jInd,:), k);
-
-            M2omega= 2*pi/(12.42*3600);
-            %modelM2= @(k,jInd) (A^2*c)./((omegaFunc(k,jInd)-M2omega)^2 +c^2);
-            j0=3.5; 
-            d=1;
-            modelM2 = @(k,j) (A^2 * c^2) ./ ((omegaFunc(k,j) - M2omega).^2 + c^2) .* ...
-                 (1 ./ ((j - j0).^2 + d^2));
-
-            % -------------------------
-            % Define complete model 
-            % -------------------------
-            model = @(k,jInd) energySpectrumModel(k,jInd) + modelM2(k,jInd); 
-            %model = @(k,jInd) modelM2(k,jInd);
-            %model = @(k,jInd) energySpectrumModel(k,jInd);
-
+            S_normalized = self.normalizeSpectrum(S_unnorm);
+            S = @(k,jInd) p.A * S_normalized(k,jInd);    
+               
         end
 
 
-        function val = objectiveFunction(self,params,k,j,E_model)
+        function M = tidalSpectrum(self,p)
+            
+            arguments
+                self 
+                p.tidalOmega = 2*pi/(12.42*3600);
+                p.A = 100
+                p.c = 7*10^-6
+                p.j0 = 3.5
+                p.d=1
+                
+            end
+            omegaFunc= @(k,jInd) interp1(self.KRadialLog, self.omega(jInd,:), k);
+            
+            
+            M = @(k,jInd) (p.A^2 * p.c^2) ./ ((omegaFunc(k,jInd) - p.tidalOmega).^2 + p.c^2) .* ...
+                 (1 ./ ((jInd - p.j0).^2 + p.d^2));
+        end
+
+
+
+        function val = objectiveFunction(self,S,k,j,E_model)
             arguments
                 self
-                params
+                S
                 k
                 j
-                E_model
+                E_model                
             end
-            energySpectrum = gmSpectrumFunctionHandle(self,params);
+            energySpectrum = S;
+            %gmSpectrumFunctionHandle(self,params);
             % limk=round((length(k) * (2/3)));
             % limj=round((length(j) * (2/3)));
             dk = (k(2)-k(1));
@@ -732,7 +674,7 @@ classdef InternalGravityWaveSpectrum < handle
             %Ekj = energySpectrum(k,j);
             % +1/2 dk
 
-            if(1)
+            if(0)
                 % First pcolor plot
                 subplot(1, 2, 1);
                 jpcolor(log(E_model));                     
