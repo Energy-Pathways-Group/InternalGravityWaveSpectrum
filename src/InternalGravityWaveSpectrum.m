@@ -28,24 +28,24 @@ classdef InternalGravityWaveSpectrum < handle
         A2
 
         HKE, VKE, PE, TE            
-
+        TEPSD
 
         zNew
 
         cutoff_modes, cutoff_k
 
-        new_KRadialLog
+        new_KRadialLog      
 
-        
     end
-        properties (Access = private, Hidden)
-            %Proprieties for test:
-            FInitial % [nZ,nModes]
-            GInitial % [nZ,nModes]
-            zInitial % [nZ]
-            N2zInitial
-                   
-        end
+
+    properties (Access = private, Hidden)
+        %Proprieties for test:
+        FInitial % [nZ,nModes]
+        GInitial % [nZ,nModes]
+        zInitial % [nZ]
+        N2zInitial
+               
+    end
 
    
 
@@ -133,7 +133,7 @@ classdef InternalGravityWaveSpectrum < handle
         self.GInitial = GInitial;
 
         % Step 1.4: Define KRadial based on Kmin=0, Kmax and nK        
-        minOrder = 2; 
+        minOrder = 1; 
         % minOrder = floor(log10(2*pi/Kmax));
         % if minOrder<=0
         %      minOrder=0;
@@ -212,32 +212,21 @@ classdef InternalGravityWaveSpectrum < handle
         % Step 4: Computation of energy distribution according 
         % with spectrum S
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        function selfUpdated = assignEnergySpectrum(self,options) 
+        function selfUpdated = assignEnergySpectrum(self,S) 
             arguments
                 self
-                options
+                S = self.generalSpectrum(j_star=3,slope_j=1,slope_k=1,A=1)                
             end
-
-            if options == "gm"
-                %p=[];
-                S_igw = self.gmSpectrum(j_star=10);
-            elseif options == "general"
-                S_igw = self.generalSpectrum(j_star=12,slope_j=2,slope_k=5,A=0.95);                
-                %S_igw = self.generalSpectrum(j_star=10,slope_j=3,slope_k=1.55,A=0.99);
-                 
-            end
-
-            S_tide = self.tidalSpectrum(A=25,c=1e-5);
-            S_fM2 = self.fM2Spectrum(A=20,c=1e-5);
-            S_f = self.fSpectrum(A=100,c=1e-5);
-            S_GMTide= @(k,jInd) S_igw(k,jInd) +S_tide(k,jInd) + S_fM2(k,jInd)+S_f(k,jInd);
-            %S_GMTide= @(k,jInd) S_igw(k,jInd);
-    
+            
+            
+   
             % -------------------------
             % Compute total energy (A2) using spectrum
             % -------------------------
             clear TE
-            TE = amplitudesWithSpectrum(self,S_GMTide);
+                    
+            TE = self.amplitudesWithSpectrum1(S);
+                       
             self.A2 = 2 * TE ./ self.h;
     
             % -------------------------
@@ -265,18 +254,68 @@ classdef InternalGravityWaveSpectrum < handle
             self.N2atQuadPoints = N2atQuadPoints;
             selfUpdated = self;
         end
-        
-        function selfUpdated = removeAllEnergy(self)
-            self.A2=[];
-            self.HKE = [];
-            self.VKE = [];
-            self.PE = [];
-            self.TE = [];
-            self.N2atQuadPoints = [];
-            selfUpdated = self;
-        end
 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Computes total energy per mode (K,j) using integral  % 
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%    
+
+
+        function totalEnergyPerComponent = amplitudesWithSpectrum1(self, spectrum)
+            arguments
+                self {mustBeNonempty}
+                spectrum {mustBeNonempty}                
+            end
+        
+            % Initialize output
+            totalEnergyPerComponent = zeros(self.nModes, self.nK);
+        
+            % Ensure KRadialLog is column vector
+            K = self.KRadialLog(:);
+            nK = length(K);
+        
+            % Compute geometric bin edges for log-spaced grid
+            edges = zeros(nK+1,1);
+            edges(1) = K(1);
+            for i = 1:nK-1
+                edges(i+1) = sqrt(K(i) * K(i+1));
+            end
+            edges(end) = K(end);
+        
+            % Safe spectrum function to avoid out-of-range evaluation
+            Ssafe = @(k,jInd) spectrum(min(max(k, K(1)), K(end)), jInd);
+        
+            % Integrate spectrum over each bin
+            for iJ = 1:self.nModes
+                jval = self.j(iJ);
+                for iK = 1:nK
+                    lb = edges(iK);
+                    ub = edges(iK+1);
+        
+                    % Total energy in the bin (TP)
+                    TP = integral(@(kk) Ssafe(kk,jval), lb, ub, ...
+                                  'RelTol',1e-8, 'AbsTol',1e-12);
+                    totalEnergyPerComponent(iJ,iK) = TP;
+        
+                    % Convert to PSD and                    
+                    binWidth = ub - lb;
+                    self.TEPSD(iJ,iK) = TP / binWidth;                   
+                    totalEnergyPerComponent(iJ,iK) = TP;
+                    
+                end
+            end
+
+            % Diagnostic printout (only makes sense for TP)        
+            for iJ = 1:self.nModes
+                jval = self.j(iJ);
+                fullIntegral = integral(@(k) Ssafe(k,jval), K(1), K(end));
+                sumBins = sum(totalEnergyPerComponent(iJ,:));
+                fprintf('Mode %d: fullIntegral=%.6g, sumBins=%.6g, rel diff=%.2e\n', ...
+                        iJ, fullIntegral, sumBins, ...
+                        abs(fullIntegral - sumBins)/fullIntegral);
+            end
             
+        end
+                    
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
@@ -349,7 +388,7 @@ classdef InternalGravityWaveSpectrum < handle
             % -------------------------
             % Compute k*^2 using mode-3 Rossby radius of deformations 
             % -------------------------
-            jVec = p.j_star * ones(size(self.KRadialLog));  % vetor same size than K
+            %jVec = p.j_star * ones(size(self.KRadialLog));  % vetor same size than K
             %jVec = 3 * ones(size(self.KRadialLog));
 
             %kstar2 = squeeze(1 ./ Lr2_func(jVec, self.KRadialLog));
