@@ -213,7 +213,7 @@ classdef InternalGravityWaveSpectrum < handle
                 im.normalization = normalization;  
     
                 zPerModeLog(:,iK) = im.GaussQuadraturePointsForModesAtWavenumber(...
-                    self.nModes+1,KRadialLog(iK));
+                    self.nModes+1,self.KRadialLog(iK));
     
                 % Second call: recompute modes on quadrature grid for efficiency
                 im = InternalModesSpectral(...
@@ -221,7 +221,7 @@ classdef InternalGravityWaveSpectrum < handle
                     latitude=self.latitude,nModes=self.nModes);
 
                 [F(:,:,iK),G(:,:,iK),h(:,iK),omega(:,iK)] = ...
-                    im.ModesAtWavenumber(KRadialLog(iK));
+                    im.ModesAtWavenumber(self.KRadialLog(iK));
     
             end
  
@@ -236,7 +236,7 @@ classdef InternalGravityWaveSpectrum < handle
             % Energy coefficients from linear wave theory
             % ========================================================
         
-            self.HKEcoef = 0.25 * (1+ (f0^2./(self.omega.^2))); 
+            self.HKEcoef = 0.25 * (1+ (self.f0^2./(self.omega.^2))); 
             self.VKEcoef = 0.25 * ((self.KRadialLog).^2 .* self.h.^2);        
             self.PEcoef  = 0.25 * (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);          
         end
@@ -306,10 +306,10 @@ classdef InternalGravityWaveSpectrum < handle
             % ================================================================
             % Compute total energy from the spectrum
             % ================================================================
-            self.TE = self.amplitudesWithSpectrum(S);
+            self.TE = self.amplitudesWithSpectrum(S,true);
 
             % Normalize by eigendepth
-            self.A2 = 2 * self.TE ./ self.h;
+            self.A2 = (2 * self.TE) ./ self.h;
 
             % ================================================================
             % Precompute stratification at modal quadrature points
@@ -487,7 +487,7 @@ classdef InternalGravityWaveSpectrum < handle
             kmax = self.KRadialLog(end);
 
             % ========================================================
-            % Integrate spectrum over whole wavenumber range for each mode
+            % Integrate spectrum over whole wavenumber range for each vertical mode
             % ========================================================
             S_norm = ones(self.nModes,1);
     
@@ -547,7 +547,7 @@ classdef InternalGravityWaveSpectrum < handle
             % Compute Rossby radius of deformation squared per mode
             % ========================================================
             Lr2_ = (self.g .* self.h) ./ (self.f0 ^ 2);
-            Lr2_func = @(k,jInd) interp1(self.KRadialLog, Lr2_(jInd,:), k, 'linear', 'extrap');
+            Lr2_func = @(k,jInd) interp1(self.KRadialLog, Lr2_(jInd,:), k, 'linear');
              
             % ========================================================
             % Unnormalized GM spectrum
@@ -618,7 +618,7 @@ classdef InternalGravityWaveSpectrum < handle
             Lr2_ = (self.g .* self.h) ./ (self.f0 ^ 2);
         
             Lr2_func = @(k,jInd) interp2(self.KRadialLog, self.j, Lr2_, ...
-                                         k, jInd, 'linear', 'extrap');
+                                         k, jInd, 'linear');
         
             % ========================================================
             % k*^2 definition
@@ -1189,7 +1189,7 @@ classdef InternalGravityWaveSpectrum < handle
         %
         %   - Interpolation is performed in (z, lambda) space with
         %       lambda = 2*pi / k.
-        %   - Linear interpolation is used with no extrapolation.
+        %   - Linear interpolation is used.
         %   - Global mode indexing allows direct access via SIModes{j}.
         %
         % -------------------------------------------------------------------------
@@ -1226,7 +1226,7 @@ classdef InternalGravityWaveSpectrum < handle
         
                     SIModes{n} = scatteredInterpolant( ...
                         ZVectorLog, lambdaVectorLog, dataVector, ...
-                        'linear', 'none');
+                        'linear');
                 end
 
             % ==================================================
