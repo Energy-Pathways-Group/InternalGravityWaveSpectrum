@@ -186,13 +186,13 @@ classdef InternalGravityWaveSpectrum < handle
             % ==================================================
             % Log-spaced horizontal wavenumber grid
             % ==================================================
-            minOrder = max(1, floor(log10(2*pi / Kmax)));
+            minOrder = max(2, floor(log10(2*pi / Kmax)));
 
             %Value for testing
             %minOrder=2;
         
             wavelengthLog = logspace(minOrder, 6, self.nK);
-            self.KRadialLog = fliplr(2*pi ./ wavelengthLog);
+            self.KRadialLog = fliplr((2*pi) ./ wavelengthLog);
             self.KRadialLog(1) = 0.5 * self.KRadialLog(1);           
            
 
@@ -241,7 +241,7 @@ classdef InternalGravityWaveSpectrum < handle
             self.PEcoef  = 0.25 * (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);          
         end
 
-
+ % ABOVE IS THE SAME
 
         function selfUpdated = assignEnergySpectrum(self,S) 
 
@@ -309,7 +309,7 @@ classdef InternalGravityWaveSpectrum < handle
             self.TE = self.amplitudesWithSpectrum(S,true);
 
             % Normalize by eigendepth
-            self.A2 = (2 * self.TE) ./ self.h;
+            self.A2 = 2 * self.TE ./ self.h;
 
             % ================================================================
             % Precompute stratification at modal quadrature points
@@ -435,7 +435,117 @@ classdef InternalGravityWaveSpectrum < handle
             end            
             
         end
+
                     
+        function testTEequalsSumOfComponents(self)
+        % TESTTEEQUALSSUMOFCOMPONENTS  Verify TE consistency via error diagnostics
+        %
+        %   This test checks whether the total energy (TE) computed directly from
+        %   the spectrum is consistent with the sum of its components:
+        %
+        %       TE ≈ HKE + VKE + PE
+        %
+        %   Procedure:
+        %     1. Interpolate HKE, VKE, and PE onto a common vertical grid
+        %     2. Integrate each component over depth
+        %     3. Apply the standard high-mode / high-k cutoff
+        %     4. Compute absolute and relative error fields
+        %
+        %   Output:
+        %     - Two-panel figure:
+        %         (left)  log10 absolute error
+        %         (right) relative error in percent (%)
+        %     - Printed scalar absolute and relative errors (L2 norms)
+        %
+        
+            arguments
+                self {mustBeNonempty}
+            end
+        
+            % ========================================================
+            % Define common vertical grid
+            % ========================================================
+            zTest = linspace(-self.Lz, 0, 1000);
+        
+            % ========================================================
+            % Interpolate energy components onto common z-grid
+            % Output size: [nz x nModes x nK]
+            % ========================================================
+            HKEz = self.scatteredInterpolation(self.HKE, zTest, self.KRadialLog, self.j);
+            VKEz = self.scatteredInterpolation(self.VKE, zTest, self.KRadialLog, self.j);
+            PEz  = self.scatteredInterpolation(self.PE,  zTest, self.KRadialLog, self.j);
+        
+            % ========================================================
+            % Integrate over depth (dimension 1 = z)
+            % Result size: [nModes x nK]
+            % ========================================================
+            HKEint = squeeze(trapz(zTest, HKEz, 1));
+            VKEint = squeeze(trapz(zTest, VKEz, 1));
+            PEint  = squeeze(trapz(zTest, PEz,  1));
+        
+            % ========================================================
+            % Apply standard cutoff (remove highest 1/3 modes and k)
+            % ========================================================
+            self.cutoff_modes = ceil(self.nModes * 2/3);
+            self.cutoff_k     = ceil(self.nK     * 2/3);
+        
+            HKEint = HKEint(1:self.cutoff_modes, 1:self.cutoff_k);
+            VKEint = VKEint(1:self.cutoff_modes, 1:self.cutoff_k);
+            PEint  = PEint( 1:self.cutoff_modes, 1:self.cutoff_k);
+        
+            TE_components = HKEint + VKEint + PEint;
+            TE_direct     = self.TE(1:self.cutoff_modes, 1:self.cutoff_k);
+        
+            % ========================================================
+            % Error fields
+            % ========================================================
+            absErrField = abs(TE_components - TE_direct);
+        
+            % Relative error in %
+            relErrField = 100 * absErrField ./ max(abs(TE_direct), eps);
+        
+            % Log-scaled absolute error (avoid log(0))
+            logAbsErrField = log10(max(absErrField, eps));
+        
+            % ========================================================
+            % Scalar error metrics (single values)
+            % ========================================================
+            absErr = norm(absErrField(:), 2);
+            relErr = absErr / norm(TE_direct(:), 2);
+        
+            fprintf('Energy consistency check:\n');
+            fprintf('  Absolute L2 error : %.3e\n', absErr);
+            fprintf('  Relative L2 error : %.2f %%\n', 100*relErr);
+        
+            % ========================================================
+            % Visualization: error diagnostics
+            % ========================================================
+            figure('Color','w');
+        
+            % --- Panel 1: log10 absolute error ---
+            subplot(1,2,1)
+            pcolor(self.KRadialLog(1:self.cutoff_k), ...
+                   1:self.cutoff_modes, ...
+                   AbsErrField);
+            shading flat
+            colorbar
+            xlabel('k [rad/m]')
+            ylabel('Vertical mode j')
+            title('log_{10} |TE_{components} - TE_{direct}|')
+        
+            % --- Panel 2: relative error (%) ---
+            subplot(1,2,2)
+            pcolor(self.KRadialLog(1:self.cutoff_k), ...
+                   1:self.cutoff_modes, ...
+                   relErrField);
+            shading flat
+            colorbar
+            xlabel('k [rad/m]')
+            ylabel('Vertical mode j')
+            title('Relative error (%)')
+        
+        end
+
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
@@ -837,6 +947,17 @@ classdef InternalGravityWaveSpectrum < handle
         end
 
 
+        function self = removeAllEnergy(self)
+        % Need to organize function
+            self.TE    = [];
+            self.HKE   = [];
+            self.VKE   = [];
+            self.PE    = [];
+            self.A2    = [];
+            self.TEPSD = [];
+        end
+
+
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         %
@@ -1145,54 +1266,9 @@ classdef InternalGravityWaveSpectrum < handle
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%        
         % Interpolation        
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+        
         function SIModes = initScatteredInterpolant(self, data, KRadialLog, nModes)
         % INITSCATTEREDINTERPOLANT  Initialize scattered interpolants for energy fields
-        %
-        %   SIModes = INITSCATTEREDINTERPOLANT(self, data, KRadialLog, nModes)
-        %   constructs scatteredInterpolant objects that map energy fields defined
-        %   on the native (zPerMode, KRadialLog) grid into continuous (z, lambda)
-        %   space, where lambda = 2*pi/k.
-        %
-        %   For mode-dependent data, a separate interpolant is created for each
-        %   requested vertical mode. For mode-independent data, a single interpolant
-        %   is returned.
-        %
-        % -------------------------------------------------------------------------
-        % INPUTS
-        %
-        %   self        : igw object containing grid information (zPerMode, nZ, nModes)
-        %
-        %   data        : energy array defined on the native grid.
-        %                 Expected size:
-        %                   - [nZ x nModes x nK] for mode-dependent fields
-        %                   - [nZ x nK]          for mode-independent fields
-        %
-        %   KRadialLog  : vector of horizontal wavenumbers corresponding to the
-        %                 third dimension of data [rad/m]
-        %
-        %   nModes      : vector of vertical mode indices for which interpolants
-        %                 should be constructed
-        %
-        % -------------------------------------------------------------------------
-        % OUTPUT
-        %
-        %   SIModes     : cell array of scatteredInterpolant objects
-        %                 - SIModes{j} is the interpolant for vertical mode j
-        %                 - Entries for modes not listed in nModes are empty
-        %
-        %                 If data is mode-independent, SIModes is a single
-        %                 scatteredInterpolant object.
-        %
-        % -------------------------------------------------------------------------
-        % NOTES
-        %
-        %   - Interpolation is performed in (z, lambda) space with
-        %       lambda = 2*pi / k.
-        %   - Linear interpolation is used.
-        %   - Global mode indexing allows direct access via SIModes{j}.
-        %
-        % -------------------------------------------------------------------------
         
             arguments
                 self
@@ -1200,48 +1276,42 @@ classdef InternalGravityWaveSpectrum < handle
                 KRadialLog
                 nModes
             end
-
-            % ==================================================
-            % Preallocate (global mode indexing)
-            % ==================================================
+        
             SIModes = cell(1, self.nModes);
-        
-            % ==================================================
-            % Native vertical coordinate
-            % ==================================================
-            ZVectorLog = reshape(self.zPerMode, [], 1);
 
-            % ==================================================
-            % Horizontal wavelength coordinate
-            % ==================================================
-            KVectorRepLog   = reshape(repmat(KRadialLog,[self.nZ 1]),[],1);
-            lambdaVectorLog = (2*pi)./KVectorRepLog;
+            %---------------------------------------------------
+            % Vertical coordinate
+            %---------------------------------------------------            
+            ZVectorLog=reshape(self.zPerMode,[],1);
         
-            % ==================================================
-            % Mode-dependent data
-            % ==================================================
+            % --------------------------------------------------
+            % Horizontal wavelength coordinate
+            % --------------------------------------------------
+            KVectorRepLog   = reshape(repmat(KRadialLog, [self.nZ 1]), [], 1);
+            lambdaVectorLog = (2*pi) ./ KVectorRepLog;
+        
+            % --------------------------------------------------
+            % Mode-dependent data: [nZ x nModes x nK]
+            % --------------------------------------------------
             if size(data,3) > 1
-                for n = nModes
-                    dataVector = reshape(data(:,n,:),[],1);
+        
+                for n = nModes        
+                    dataVector = reshape(data(:, n, :), [], 1);
         
                     SIModes{n} = scatteredInterpolant( ...
-                        ZVectorLog, lambdaVectorLog, dataVector, ...
-                        'linear');
+                        ZVectorLog, lambdaVectorLog, dataVector);
                 end
-
-            % ==================================================
+        
+            % --------------------------------------------------
             % Mode-independent data
-            % ==================================================
+            % --------------------------------------------------
             else
-                dataVector = reshape(data,[],1);
+                dataVector = reshape(data, [], 1);
         
                 SIModes = scatteredInterpolant( ...
-                    ZVectorLog, lambdaVectorLog, dataVector, ...
-                    'linear', 'none');
+                    ZVectorLog, lambdaVectorLog, dataVector);                   
             end
-        
         end
-
    
 
         function DataInterpMat = scatteredInterpolation(self, data, zVectorNew, KVectorNew, verticalMode)
