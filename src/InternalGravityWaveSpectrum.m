@@ -56,8 +56,8 @@ classdef InternalGravityWaveSpectrum < handle
         TEPSD
         zNew
         cutoff_modes, cutoff_k
-        new_KRadialLog      
-
+        new_KRadialLog  
+        
     end
 
     properties (Access = private, Hidden)
@@ -66,6 +66,7 @@ classdef InternalGravityWaveSpectrum < handle
         GInitial % [nZ,nModes]
         zInitial % [nZ]
         N2zInitial
+        Lr2Interpolant   % griddedInterpolant object
                
     end
    
@@ -229,8 +230,24 @@ classdef InternalGravityWaveSpectrum < handle
             self.F = F;
             self.G = G;
             self.h = h;
-            self.omega = omega;     
+            self.omega = omega;  
 
+            % ========================================================
+            % Rossby radius squared on native grid
+            % Size: [nModes x nK]
+            % ========================================================        
+           
+            Lr2_ = (self.g .* self.h) ./ (self.f0^2);
+
+            % IMPORTANT:
+            % griddedInterpolant expects NDGRID ordering
+            % Here: (j, k)
+            self.Lr2Interpolant = griddedInterpolant( ...
+                {self.j, self.KRadialLog}, ...
+                Lr2_, ...
+                'linear', ...   % interpolation
+                'nearest');     % extrapolation     
+            
 
             % ========================================================
             % Energy coefficients from linear wave theory
@@ -241,7 +258,6 @@ classdef InternalGravityWaveSpectrum < handle
             self.PEcoef  = 0.25 * (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);          
         end
 
- % ABOVE IS THE SAME
 
         function selfUpdated = assignEnergySpectrum(self,S) 
 
@@ -553,7 +569,7 @@ classdef InternalGravityWaveSpectrum < handle
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function S_normalized = normalizeSpectrum(self,S)
+        function S_normalized = normalizeSpectrum(self,S_in)
 
         % NORMALIZESPECTRUM  Normalize a spectrum function handle to GM energy level 1
         %
@@ -587,7 +603,7 @@ classdef InternalGravityWaveSpectrum < handle
 
             arguments
                 self {mustBeNonempty}
-                S {mustBeNonempty, mustBeA(S,'function_handle')}
+                S_in {mustBeNonempty, mustBeA(S_in,'function_handle')}
             end
 
             % ========================================================
@@ -602,7 +618,7 @@ classdef InternalGravityWaveSpectrum < handle
             S_norm = ones(self.nModes,1);
     
             for jIdx = 1:self.nModes
-                S_norm(jIdx) = integral(@(k) S(k, self.j(jIdx)), kmin, kmax, ...
+                S_norm(jIdx) = integral(@(k) S_in(k, jIdx), kmin, kmax, ...
                               ...
                               'RelTol',1e-8, 'AbsTol',1e-12);
             end
@@ -619,7 +635,7 @@ classdef InternalGravityWaveSpectrum < handle
             % Compute normalization factor and return normalized spectrum
             % ========================================================
             normFactor = E / sum(S_norm);
-            S_normalized = @(k, jInd) normFactor * S(k, jInd);
+            S_normalized = @(k, jInd) normFactor * S_in(k, jInd);
         end
 
         function S = gmSpectrum(self, p)
@@ -721,26 +737,37 @@ classdef InternalGravityWaveSpectrum < handle
                 p.slope_k = 1;
                 p.A       = 1;
             end
+
+            assert(~isempty(self.Lr2Interpolant), ...
+            'Lr2Interpolant not initialized.');
+
         
             % ========================================================
             % Rossby radius of deformation squared
             % ========================================================
-            Lr2_ = (self.g .* self.h) ./ (self.f0 ^ 2);
-        
-            Lr2_func = @(k,jInd) interp2(self.KRadialLog, self.j, Lr2_, ...
-                                         k, jInd, 'linear');
-        
+
+            % Old, simple and performance killer method
+            % Lr2_ = (self.g .* self.h) ./ (self.f0 ^ 2);
+            % 
+            % Lr2_func = @(k,jInd) interp2(self.KRadialLog, self.j, Lr2_, ...
+            %                              k, jInd, 'linear');
+
+            % New method (Jan 6th, 2026) 
             % ========================================================
-            % k*^2 definition
+            % Rossby radius interpolant handles
             % ========================================================
-            kstar2_func = @(k,jInd) 1 ./ Lr2_func(k,jInd);
-        
+            % Safe wrapper (vectorized in k)
+            
+            self.Lr2 = @(k,j) self.Lr2Interpolant(j .* ones(size(k)), k );
+            %self.Lr2  = @(k,j) self.Lr2Interpolant(j, k);
+            kstar2 = @(k,j) 1 ./ self.Lr2(k,j);
+
             % ========================================================
             % Unnormalized generalized spectrum
             % ========================================================
-            S_unnorm = @(k,jInd) sqrt(Lr2_func(k,jInd)) ./ ...
-                ( (k.^2 ./ kstar2_func(k,jInd) + 1).^p.slope_k .* ...
-                  (Lr2_func(k,p.j_star) ./ Lr2_func(k,jInd) + 1).^p.slope_j );
+            S_unnorm = @(k,jInd) sqrt(self.Lr2(k,jInd)) ./ ...
+                ( (k.^2 ./ kstar2(k,jInd) + 1).^p.slope_k .* ...
+                  (self.Lr2(k,p.j_star) ./ self.Lr2(k,jInd) + 1).^p.slope_j );
         
             % ========================================================
             % Normalize and apply amplitude scaling
