@@ -60,7 +60,7 @@ classdef InternalGravityWaveSpectrum < handle
         
     end
 
-    properties (Access = private, Hidden)
+    properties %(Access = private, Hidden)
         %Stored for testing / debugging 
         FInitial % [nZ,nModes]
         GInitial % [nZ,nModes]
@@ -246,7 +246,9 @@ classdef InternalGravityWaveSpectrum < handle
                 {self.j, self.KRadialLog}, ...
                 Lr2_, ...
                 'linear', ...   % interpolation
-                'nearest');     % extrapolation     
+                'nearest');     % extrapolation
+
+            self.Lr2Interpolant = @(j,k) reshape( interp1(self.KRadialLog,(self.g .* self.h(j,:)) ./ (self.f0^2),k,"linear"), size(k));
             
 
             % ========================================================
@@ -258,6 +260,10 @@ classdef InternalGravityWaveSpectrum < handle
             self.PEcoef  = 0.25 * (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);          
         end
 
+        function y = interp_at(self,d,j,k)
+            FF = d{j};   % griddedInterpolant
+            y = FF(k);   % k can be a vector
+        end
 
         function selfUpdated = assignEnergySpectrum(self,S) 
 
@@ -322,7 +328,7 @@ classdef InternalGravityWaveSpectrum < handle
             % ================================================================
             % Compute total energy from the spectrum
             % ================================================================
-            self.TE = self.amplitudesWithSpectrum(S,true);
+            self.TE = self.amplitudesWithSpectrum(S,false);
 
             % Normalize by eigendepth
             self.A2 = 2 * self.TE ./ self.h;
@@ -758,8 +764,8 @@ classdef InternalGravityWaveSpectrum < handle
             % ========================================================
             % Safe wrapper (vectorized in k)
             
-            self.Lr2 = @(k,j) self.Lr2Interpolant(j .* ones(size(k)), k );
-            %self.Lr2  = @(k,j) self.Lr2Interpolant(j, k);
+            % self.Lr2 = @(k,j) self.Lr2Interpolant(j .* ones(size(k)), k );
+            % self.Lr2  = @(k,j) self.Lr2Interpolant(j, k);
             kstar2 = @(k,j) 1 ./ self.Lr2(k,j);
 
             % ========================================================
@@ -768,6 +774,87 @@ classdef InternalGravityWaveSpectrum < handle
             S_unnorm = @(k,jInd) sqrt(self.Lr2(k,jInd)) ./ ...
                 ( (k.^2 ./ kstar2(k,jInd) + 1).^p.slope_k .* ...
                   (self.Lr2(k,p.j_star) ./ self.Lr2(k,jInd) + 1).^p.slope_j );
+        
+            % ========================================================
+            % Normalize and apply amplitude scaling
+            % ========================================================
+            S_normalized = self.normalizeSpectrum(S_unnorm);
+            S = @(k,jInd) p.A * S_normalized(k,jInd);
+        
+        end
+
+        function S = generalSpectrumKLr(self, p)
+        % GENERALSPECTRUM  Generate a tunable internal wave energy spectrum
+        %
+        %   S = GENERALSPECTRUM(self, p) returns a function handle S(k,j) defining
+        %   a generalized internal wave energy spectrum with user-specified
+        %   slopes, reference mode, and amplitude.
+        %
+        %   The spectrum is normalized to GM energy level 1 before applying
+        %   the amplitude scaling factor p.A.
+        %
+        % -------------------------------------------------------------------------
+        % INPUTS
+        %
+        %   self : Model object containing:
+        %          - g          : gravitational acceleration
+        %          - h          : eigendepths or mode depths
+        %          - f0         : Coriolis parameter
+        %          - j          : vertical mode numbers
+        %          - KRadialLog : radial wavenumber vector (log-spaced)
+        %
+        %   p    : Structure with parameters:
+        %          - j_star  : reference vertical mode (default: 3)
+        %          - slope_j : vertical mode slope      (default: 1)
+        %          - slope_k : horizontal wavenumber slope (default: 1)
+        %          - A       : amplitude scaling factor (default: 1)
+        %
+        % -------------------------------------------------------------------------
+        % OUTPUTS
+        %
+        %   S : Function handle of the generalized spectrum.
+        %       Signature: S(k,j)
+        %
+        % -------------------------------------------------------------------------
+        
+            arguments
+                self
+                p.j_star  = 3;
+                p.slope_j = 1;
+                p.slope_k = 1;
+                p.A       = 1;
+            end
+
+            assert(~isempty(self.Lr2Interpolant), ...
+            'Lr2Interpolant not initialized.');
+
+        
+            % ========================================================
+            % Rossby radius of deformation squared
+            % ========================================================
+
+            % Old, simple and performance killer method
+            % Lr2_ = (self.g .* self.h) ./ (self.f0 ^ 2);
+            % 
+            % Lr2_func = @(k,jInd) interp2(self.KRadialLog, self.j, Lr2_, ...
+            %                              k, jInd, 'linear');
+
+            % New method (Jan 6th, 2026) 
+            % ========================================================
+            % Rossby radius interpolant handles
+            % ========================================================
+            % Safe wrapper (vectorized in k)
+            
+            % self.Lr2 = @(k,j) self.Lr2Interpolant(j .* ones(size(k)), k );
+            % self.Lr2  = @(k,j) self.Lr2Interpolant(j, k);
+            kstar2 = @(k,Lr) 1 ./ (Lr*Lr);
+
+            % ========================================================
+            % Unnormalized generalized spectrum
+            % ========================================================
+            S_unnorm = @(k,Lr) Lr ./ ...
+                ( (k.^2 ./ kstar2(k,Lr) + 1).^p.slope_k .* ...
+                  (Lr*Lr ./ self.Lr2(k,jInd) + 1).^p.slope_j );
         
             % ========================================================
             % Normalize and apply amplitude scaling
