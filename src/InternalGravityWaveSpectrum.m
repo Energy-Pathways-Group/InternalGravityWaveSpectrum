@@ -66,9 +66,9 @@ classdef InternalGravityWaveSpectrum < handle
         GInitial % [nZ,nModes]
         zInitial % [nZ]
         N2zInitial
-        Lr2Interpolant   % griddedInterpolant object
-        
-        LrInterpolantDictionary
+
+        Lr2Interpolant2D   % griddedInterpolant object
+        LrInterpolant1DDictionary
     end
    
 
@@ -243,18 +243,16 @@ classdef InternalGravityWaveSpectrum < handle
             % IMPORTANT:
             % griddedInterpolant expects NDGRID ordering
             % Here: (j, k)
-            self.Lr2Interpolant = griddedInterpolant( ...
-                {self.j, self.KRadialLog}, ...
-                Lr2_, ...
+            self.Lr2Interpolant2D = griddedInterpolant( {self.j, self.KRadialLog}, Lr2_, ...
                 'linear', ...   % interpolation
                 'nearest');     % extrapolation
-
-            self.Lr2Interpolant = @(j,k) reshape( interp1(self.KRadialLog,(self.g .* self.h(j,:)) ./ (self.f0^2),k,"linear"), size(k));
             
-            self.LrInterpolantDictionary = configureDictionary("double","cell");
+            self.LrInterpolant1DDictionary = configureDictionary("double","cell");
             for iJ=1:length(self.j)
-                self.LrInterpolantDictionary{iJ} = griddedInterpolant( self.KRadialLog, sqrt(Lr2_(iJ,:)), 'linear', 'nearest');
+                self.LrInterpolant1DDictionary{iJ} = griddedInterpolant( self.KRadialLog, sqrt(Lr2_(iJ,:)), 'linear', 'nearest');
             end
+
+            self.setInterpolationMethod(1);
 
             % ========================================================
             % Energy coefficients from linear wave theory
@@ -265,12 +263,27 @@ classdef InternalGravityWaveSpectrum < handle
             self.PEcoef  = 0.25 * (((self.KRadialLog).^2.*self.h.^2)./self.omega.^2);          
         end
 
-        function y = interp_at(self,j,k)
-            FF = self.LrInterpolantDictionary{j};   % griddedInterpolant
+        function setInterpolationMethod(self,method)
+            arguments
+                self
+                method (1,1) double = 1
+            end
+            switch method
+                case 1
+                    self.Lr2 = @(k,j) self.Lr2Interpolant2D(j .* ones(size(k)), k );
+                case 2
+                    self.Lr2 = @(k,j) reshape( interp1(self.KRadialLog,(self.g .* self.h(floor(j),:)) ./ (self.f0^2),k,"linear"), size(k));
+                case 3
+                    self.Lr2 = @(k,j) (self.LrInterp(k,j)).^2;
+            end
+        end
+
+        function y = LrInterp(self,k,j)
+            FF = self.LrInterpolant1DDictionary{floor(j)};   % griddedInterpolant
             y = FF(k);   % k can be a vector
         end
 
-        function selfUpdated = assignEnergySpectrum(self,S) 
+        function assignEnergySpectrum(self,S,options) 
 
         % ASSIGNENERGYSPECTRUM  Compute and assign wave–energy components from a spectrum
         %
@@ -314,8 +327,9 @@ classdef InternalGravityWaveSpectrum < handle
 
             arguments
                 self
-                S (1,1) function_handle = self.generalSpectrum( ...
-                        j_star=3, slope_j=1, slope_k=1, A=1)
+                S (1,1) function_handle = self.generalSpectrum()
+                options.arguments (1,1) string {mustBeMember(options.arguments, ["kj","kLr"])} = "kLr"
+                options.verbose logical = false
             end
             
 
@@ -333,7 +347,7 @@ classdef InternalGravityWaveSpectrum < handle
             % ================================================================
             % Compute total energy from the spectrum
             % ================================================================
-            self.TE = self.amplitudesWithSpectrum(S,false);
+            self.TE = self.amplitudesWithSpectrum(S,arguments=options.arguments,verbose=options.verbose);
 
             % Normalize by eigendepth
             self.A2 = 2 * self.TE ./ self.h;
@@ -359,103 +373,9 @@ classdef InternalGravityWaveSpectrum < handle
             end
         
             self.PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* N2local;
-            selfUpdated = self;
-    
         end
 
-        function selfUpdated = assignEnergySpectrumKLr(self,S)
-
-            % ASSIGNENERGYSPECTRUM  Compute and assign wave–energy components from a spectrum
-            %
-            %   self = ASSIGNENERGYSPECTRUM(self, S) applies a user-defined spectrum function
-            %   handle S to compute the total wave energy and its decomposition into:
-            %       - Horizontal Kinetic Energy (HKE)
-            %       - Vertical   Kinetic Energy (VKE)
-            %       - Potential  Energy (PE)
-            %
-            %   The method stores all results back into the object.
-            %
-            % -------------------------------------------------------------------------
-            % INPUTS
-            %
-            %   self  : Model object
-            %
-            %   S     : Function handle defining the energy spectrum.
-            %           It must have the signature:   A = S(j, k)
-            %
-            %           If omitted, the default spectrum is:
-            %               S = self.generalSpectrum(j_star=3, slope_j=1, slope_k=1, A=1)
-            %
-            % -------------------------------------------------------------------------
-            % OUTPUT
-            %
-            %   selfUpdated : Updated model object containing:
-            %       self.A2
-            %       self.TE
-            %       self.HKE
-            %       self.VKE
-            %       self.PE
-            %       self.N2atQuadPoints
-            %
-            % -------------------------------------------------------------------------
-            % EXAMPLE
-            %
-            %   S = myModel.generalSpectrum(j_star=4, slope_j=1.2, slope_k=1.1, A=2);
-            %   myModel = myModel.assignEnergySpectrum(S);
-            %
-            % -------------------------------------------------------------------------
-
-            arguments
-                self
-                S (1,1) function_handle = self.generalSpectrumKLr()
-            end
-
-
-            % ================================================================
-            % Validate spectrum function handle with a test call
-            % ================================================================
-            try
-                % Test using minimal valid input shapes
-                S(1e-4,1);
-            catch ME
-                error("Invalid spectrum function handle S. " + ...
-                    "It must be callable as S(j, k).\nOriginal error:\n%s", ME.message);
-            end
-
-            % ================================================================
-            % Compute total energy from the spectrum
-            % ================================================================
-            self.TE = self.amplitudesWithSpectrumKLr(S,false);
-
-            % Normalize by eigendepth
-            self.A2 = 2 * self.TE ./ self.h;
-
-            % ================================================================
-            % Precompute stratification at modal quadrature points
-            % ================================================================
-            self.N2atQuadPoints = self.N2(self.zPerMode);
-
-            % ================================================================
-            % Energy components
-            % ================================================================
-            self.HKE = shiftdim(self.A2 .* self.HKEcoef, -1) .* self.F.^2;
-            self.VKE = shiftdim(self.A2 .* self.VKEcoef, -1) .* self.G.^2;
-
-            % PE requires correct handling of N² shape
-            if isscalar(self.N2atQuadPoints)
-                % Constant stratification
-                N2local = self.N2atQuadPoints;
-            else
-                % Reshape to match dimensions [nZ 1 nK]
-                N2local = reshape(self.N2atQuadPoints, [self.nZ 1 self.nK]);
-            end
-
-            self.PE = shiftdim(self.A2 .* self.PEcoef, -1) .* self.G.^2 .* N2local;
-            selfUpdated = self;
-
-        end
-
-        function totalEnergyPerComponent = amplitudesWithSpectrum(self, spectrum, verbose)
+        function totalEnergyPerComponent = amplitudesWithSpectrum(self, spectrum, options)
 
         % AMPLITUDESWITHSPECTRUM  Compute total energy from a spectrum
         %
@@ -495,7 +415,8 @@ classdef InternalGravityWaveSpectrum < handle
             arguments
                 self {mustBeNonempty}
                 spectrum {mustBeNonempty, mustBeA(spectrum,'function_handle')}
-                verbose logical = false
+                options.arguments (1,1) string {mustBeMember(options.arguments, ["kj","kLr"])} = "kLr"
+                options.verbose logical = false
             end
     
        
@@ -516,35 +437,63 @@ classdef InternalGravityWaveSpectrum < handle
             % ========================================================
             % Safe spectrum function to avoid out-of-range evaluation
             % ========================================================
-            Ssafe = @(k,jInd) spectrum(min(max(k, K(1)), K(end)), jInd);            
+            switch options.arguments
+                case "kj"
+                    Ssafe = @(k,jInd) spectrum(min(max(k, K(1)), K(end)), jInd);
+                case "kLr"
+                    Ssafe = @(k,Lr) spectrum(min(max(k, K(1)), K(end)), Lr);
+            end
         
             % ========================================================
             % Integrate spectrum over each bin
             % ========================================================
-            for iJ = 1:self.nModes
-                jval = self.j(iJ);
-                for iK = 1:localnK
-                    lb = edges(iK);
-                    ub = edges(iK+1);
-        
-                    % Total energy in the bin (TP)
-                    TP = integral(@(kk) Ssafe(kk,jval), lb, ub, ...
-                                  'RelTol',1e-8, 'AbsTol',1e-12);
-                    totalEnergyPerComponent(iJ,iK) = TP;
-        
-                    % Store PSD per bin
-                    self.TEPSD(iJ,iK) = TP / (ub - lb);          
-                                      
-                end
+            switch options.arguments
+                case "kj"
+                    for iJ = 1:self.nModes
+                        jval = self.j(iJ);
+                        for iK = 1:localnK
+                            lb = edges(iK);
+                            ub = edges(iK+1);
+
+                            % Total energy in the bin (TP)
+                            TP = integral(@(kk) Ssafe(kk,jval), lb, ub, RelTol=1e-8, AbsTol=1e-12);
+                            totalEnergyPerComponent(iJ,iK) = TP;
+
+                            % Store PSD per bin
+                            self.TEPSD(iJ,iK) = TP / (ub - lb);
+                        end
+                    end
+                case "kLr"
+                    for iJ = 1:self.nModes
+                        Lr = self.LrInterpolant1DDictionary{self.j(iJ)};
+                        for iK = 1:localnK
+                            lb = edges(iK);
+                            ub = edges(iK+1);
+
+                            % Total energy in the bin (TP)
+                            TP = integral(@(kk) Ssafe(kk,Lr(kk)), lb, ub, RelTol=1e-8, AbsTol=1e-12);
+                            totalEnergyPerComponent(iJ,iK) = TP;
+
+                            % Store PSD per bin
+                            self.TEPSD(iJ,iK) = TP / (ub - lb);
+
+                        end
+                    end
             end
 
             % ========================================================
             % Optional diagnostic printout
             % ========================================================    
-            if verbose
+            if options.verbose
                 for iJ = 1:self.nModes
-                    jval = self.j(iJ);
-                    fullIntegral = integral(@(k) Ssafe(k,jval), K(1), K(end));
+                    switch options.arguments
+                        case "kj"
+                            jval = self.j(iJ);
+                            fullIntegral = integral(@(k) Ssafe(k,jval), K(1), K(end));
+                        case "kLr"
+                            Lr = self.LrInterpolant1DDictionary{self.j(iJ)};
+                            fullIntegral = integral(@(k) Ssafe(k,Lr(k)), K(1), K(end));
+                    end
                     sumBins = sum(totalEnergyPerComponent(iJ,:));
                     fprintf('Mode %d: fullIntegral=%.6g, sumBins=%.6g, rel diff=%.2e\n', ...
                             iJ, fullIntegral, sumBins, abs(fullIntegral - sumBins)/fullIntegral);
@@ -552,105 +501,6 @@ classdef InternalGravityWaveSpectrum < handle
             end            
             
         end
-
-        function totalEnergyPerComponent = amplitudesWithSpectrumKLr(self, spectrum, verbose)
-
-        % AMPLITUDESWITHSPECTRUM  Compute total energy from a spectrum
-        %
-        %   totalEnergyPerComponent = AMPLITUDESWITHSPECTRUM(self, spectrum)
-        %   computes the total energy for each vertical mode and horizontal wavenumber
-        %   bin given a user-defined spectrum function handle.
-        %
-        % -------------------------------------------------------------------------
-        % INPUTS
-        %
-        %   self     : Model object containing:
-        %              - nModes : number of vertical modes
-        %              - nK     : number of horizontal wavenumber bins
-        %              - KRadialLog : radial wavenumber vector (log-spaced)
-        %              - j      : vertical mode numbers
-        %
-        %   spectrum : Function handle defining the energy spectrum.
-        %              Must have the signature:  S = spectrum(k, j)
-        %
-        %   verbose  : Logical flag (true/false). If true, prints diagnostic info.
-        %              Default: false
-        %
-        % -------------------------------------------------------------------------
-        % OUTPUTS
-        %
-        %   totalEnergyPerComponent : [nModes x nK] array containing the total energy
-        %                             in each vertical mode and horizontal bin.
-        %
-        % -------------------------------------------------------------------------
-        % EXAMPLES
-        %
-        %   S = @(k,j) exp(-k.^2) .* j; 
-        %   energy = myModel.amplitudesWithSpectrum(S, true);
-        %
-        % -------------------------------------------------------------------------    
-
-            arguments
-                self {mustBeNonempty}
-                spectrum {mustBeNonempty, mustBeA(spectrum,'function_handle')}
-                verbose logical = false
-            end
-    
-       
-            % ========================================================
-            % Initialize output
-            % ========================================================
-            totalEnergyPerComponent = zeros(self.nModes, self.nK);
-        
-            % Ensure KRadialLog is column vector
-            K = self.KRadialLog(:);
-            localnK = self.nK;
-        
-            % ========================================================
-            % Geometric bin edges for log-spaced K
-            % ========================================================
-            edges = [K(1); sqrt(K(1:end-1).*K(2:end)); K(end)];
-        
-            % ========================================================
-            % Safe spectrum function to avoid out-of-range evaluation
-            % ========================================================
-            Ssafe = @(k,Lr) spectrum(min(max(k, K(1)), K(end)), Lr);            
-        
-            % ========================================================
-            % Integrate spectrum over each bin
-            % ========================================================
-            for iJ = 1:self.nModes
-                Lr = self.LrInterpolantDictionary{self.j(iJ)};
-                for iK = 1:localnK
-                    lb = edges(iK);
-                    ub = edges(iK+1);
-        
-                    % Total energy in the bin (TP)
-                    TP = integral(@(kk) Ssafe(kk,Lr(kk)), lb, ub, ...
-                                  'RelTol',1e-8, 'AbsTol',1e-12);
-                    totalEnergyPerComponent(iJ,iK) = TP;
-        
-                    % Store PSD per bin
-                    self.TEPSD(iJ,iK) = TP / (ub - lb);          
-                                      
-                end
-            end
-
-            % ========================================================
-            % Optional diagnostic printout
-            % ========================================================    
-            if verbose
-                for iJ = 1:self.nModes
-                    Lr = self.LrInterpolantDictionary{self.j(iJ)};
-                    fullIntegral = integral(@(k) Ssafe(k,Lr(k)), K(1), K(end));
-                    sumBins = sum(totalEnergyPerComponent(iJ,:));
-                    fprintf('Mode %d: fullIntegral=%.6g, sumBins=%.6g, rel diff=%.2e\n', ...
-                            iJ, fullIntegral, sumBins, abs(fullIntegral - sumBins)/fullIntegral);
-                end
-            end            
-            
-        end
-
                     
         function testTEequalsSumOfComponents(self)
         % TESTTEEQUALSSUMOFCOMPONENTS  Verify TE consistency via error diagnostics
@@ -768,7 +618,7 @@ classdef InternalGravityWaveSpectrum < handle
         %
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        function S_normalized = normalizeSpectrum(self,S_in)
+        function S_normalized = normalizeSpectrum(self,S,options)
 
         % NORMALIZESPECTRUM  Normalize a spectrum function handle to GM energy level 1
         %
@@ -802,7 +652,8 @@ classdef InternalGravityWaveSpectrum < handle
 
             arguments
                 self {mustBeNonempty}
-                S_in {mustBeNonempty, mustBeA(S_in,'function_handle')}
+                S {mustBeNonempty, mustBeA(S,'function_handle')}
+                options.arguments (1,1) string {mustBeMember(options.arguments, ["kj","kLr"])} = "kLr"
             end
 
             % ========================================================
@@ -816,10 +667,16 @@ classdef InternalGravityWaveSpectrum < handle
             % ========================================================
             S_norm = ones(self.nModes,1);
     
-            for jIdx = 1:self.nModes
-                S_norm(jIdx) = integral(@(k) S_in(k, jIdx), kmin, kmax, ...
-                              ...
-                              'RelTol',1e-8, 'AbsTol',1e-12);
+            switch options.arguments
+                case "kj"
+                    for jIdx = 1:self.nModes
+                        S_norm(jIdx) = integral(@(k) S(k, jIdx), kmin, kmax, RelTol=1e-8, AbsTol=1e-12);
+                    end
+                case "kLr"
+                    for jIdx = 1:self.nModes
+                        Lr = self.LrInterpolant1DDictionary{jIdx};
+                        S_norm(jIdx) = integral(@(k) S(k, Lr(k)), kmin, kmax, RelTol=1e-8, AbsTol=1e-12);
+                    end
             end
 
             % ========================================================
@@ -834,77 +691,7 @@ classdef InternalGravityWaveSpectrum < handle
             % Compute normalization factor and return normalized spectrum
             % ========================================================
             normFactor = E / sum(S_norm);
-            S_normalized = @(k, jInd) normFactor * S_in(k, jInd);
-        end
-
-        function S_normalized = normalizeSpectrumKLr(self,S_in)
-
-        % NORMALIZESPECTRUM  Normalize a spectrum function handle to GM energy level 1
-        %
-        %   S_normalized = NORMALIZESPECTRUM(self, S) takes a function handle S(k,j)
-        %   representing the energy spectrum and returns a new function handle
-        %   normalized such that its total energy matches the Garrett–Munk (GM)
-        %   reference energy level.
-        %
-        % -------------------------------------------------------------------------
-        % INPUTS
-        %
-        %   self : Model object containing:
-        %          - nModes     : number of vertical modes
-        %          - KRadialLog : radial wavenumber vector (log-spaced)
-        %          - j          : vector of vertical mode numbers
-        %
-        %   S    : Function handle of the energy spectrum, signature S(k,j)
-        %
-        % -------------------------------------------------------------------------
-        % OUTPUTS
-        %
-        %   S_normalized : Function handle of the normalized spectrum
-        %
-        % -------------------------------------------------------------------------
-        % EXAMPLE
-        %
-        %   S = @(k,j) exp(-k.^2).*j;
-        %   S_norm = myModel.normalizeSpectrum(S);
-        %
-        % -------------------------------------------------------------------------
-
-            arguments
-                self {mustBeNonempty}
-                S_in {mustBeNonempty, mustBeA(S_in,'function_handle')}
-            end
-
-            % ========================================================
-            % Determine integration bounds
-            % ========================================================
-            kmin = self.KRadialLog(1);
-            kmax = self.KRadialLog(end);
-
-            % ========================================================
-            % Integrate spectrum over whole wavenumber range for each vertical mode
-            % ========================================================
-            S_norm = ones(self.nModes,1);
-    
-            for jIdx = 1:self.nModes
-                Lr = self.LrInterpolantDictionary{jIdx};
-                S_norm(jIdx) = integral(@(k) S_in(k, Lr(k)), kmin, kmax, ...
-                              ...
-                              'RelTol',1e-8, 'AbsTol',1e-12);
-            end
-
-            % ========================================================
-            % Garrett–Munk reference energy
-            % ========================================================
-            L_gm = 1.3e3;         % Thermocline exponential scale [m]
-            invT_gm = 5.2e-3;     % Reference buoyancy frequency [rad/s]
-            E_gm = 6.3e-5;        % Non-dimensional energy parameter
-            E = (L_gm^3) * (invT_gm^2) * E_gm; % Total GM energy
-
-            % ========================================================
-            % Compute normalization factor and return normalized spectrum
-            % ========================================================
-            normFactor = E / sum(S_norm);
-            S_normalized = @(k, Lr) normFactor * S_in(k, Lr);
+            S_normalized = @(k, jInd) normFactor * S(k, jInd);
         end
 
         function S = gmSpectrum(self, p)
@@ -1007,7 +794,7 @@ classdef InternalGravityWaveSpectrum < handle
                 p.A       = 1;
             end
 
-            assert(~isempty(self.Lr2Interpolant), ...
+            assert(~isempty(self.Lr2Interpolant2D), ...
             'Lr2Interpolant not initialized.');
 
         
@@ -1041,7 +828,7 @@ classdef InternalGravityWaveSpectrum < handle
             % ========================================================
             % Normalize and apply amplitude scaling
             % ========================================================
-            S_normalized = self.normalizeSpectrum(S_unnorm);
+            S_normalized = self.normalizeSpectrum(S_unnorm,arguments="kj");
             S = @(k,jInd) p.A * S_normalized(k,jInd);
         
         end
@@ -1088,7 +875,7 @@ classdef InternalGravityWaveSpectrum < handle
                 p.A       = 1;
             end
 
-            assert(~isempty(self.Lr2Interpolant), ...
+            assert(~isempty(self.Lr2Interpolant2D), ...
             'Lr2Interpolant not initialized.');
 
         
@@ -1122,7 +909,7 @@ classdef InternalGravityWaveSpectrum < handle
             % ========================================================
             % Normalize and apply amplitude scaling
             % ========================================================
-            S_normalized = self.normalizeSpectrumKLr(S_unnorm);
+            S_normalized = self.normalizeSpectrum(S_unnorm,arguments="kLr");
             S = @(k,Lr) p.A * S_normalized(k,Lr);
         
         end
