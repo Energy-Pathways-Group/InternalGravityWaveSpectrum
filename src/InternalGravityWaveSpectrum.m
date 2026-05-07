@@ -49,7 +49,7 @@ classdef InternalGravityWaveSpectrum < handle
         zPerMode % [nZ,nModes]        
         N2atQuadPoints
         Lr2                  
-        E_T 
+        E
         HKEcoef, VKEcoef, PEcoef
         A2
         HKE, VKE, PE, TE            
@@ -440,7 +440,7 @@ classdef InternalGravityWaveSpectrum < handle
             % ========================================================
             % Optional diagnostic printout
             % ========================================================    
-            if verbose
+            if verbose 
                 for iJ = 1:self.nModes
                     jval = self.j(iJ);
                     fullIntegral = integral(@(k) Ssafe(k,jval), K(1), K(end));
@@ -629,12 +629,12 @@ classdef InternalGravityWaveSpectrum < handle
             L_gm = 1.3e3;         % Thermocline exponential scale [m]
             invT_gm = 5.2e-3;     % Reference buoyancy frequency [rad/s]
             E_gm = 6.3e-5;        % Non-dimensional energy parameter
-            E = (L_gm^3) * (invT_gm^2) * E_gm; % Total GM energy
+            self.E = (L_gm^3) * (invT_gm^2) * E_gm; % Total GM energy
 
             % ========================================================
             % Compute normalization factor and return normalized spectrum
             % ========================================================
-            normFactor = E / sum(S_norm);
+            normFactor = self.E / sum(S_norm);
             S_normalized = @(k, jInd) normFactor * S_in(k, jInd);
         end
 
@@ -767,7 +767,7 @@ classdef InternalGravityWaveSpectrum < handle
             % ========================================================
             S_unnorm = @(k,jInd) sqrt(self.Lr2(k,jInd)) ./ ...
                 ( (k.^2 ./ kstar2(k,jInd) + 1).^p.slope_k .* ...
-                  (self.Lr2(k,p.j_star) ./ self.Lr2(k,jInd) + 1).^p.slope_j );
+                  (self.Lr2(k,p.j_star) ./ self.Lr2(k,jInd) + 1).^p.slope_j );            
         
             % ========================================================
             % Normalize and apply amplitude scaling
@@ -827,7 +827,7 @@ classdef InternalGravityWaveSpectrum < handle
                 p.A      = 100;
                 p.c      = 7e-6;
                 p.j0     = 3.5;
-                p.d      = 0;
+                p.d      = 1;
             end
         
             % ==================================================
@@ -853,11 +853,16 @@ classdef InternalGravityWaveSpectrum < handle
                 p.A = 100;
                 p.c = 7e-6;
                 p.j0 = 3.5;
-                p.d  = 0;
+                p.d  = 1;
             end
         
             p.omega0 = 2*pi/(12.42*3600); % M2
-            S = self.frequencyLocalizedSpectrum(p);
+            S = self.frequencyLocalizedSpectrum( ...
+            'A', p.A, ...
+            'c', p.c, ...
+            'j0', p.j0, ...
+            'd', p.d, ...
+            'omega0', p.omega0);
         end
 
 
@@ -984,6 +989,76 @@ classdef InternalGravityWaveSpectrum < handle
             self.TEPSD = [];
         end
 
+
+
+        function Srnd = randomRealization(self)
+        %RANDOMREALIZATIONGenerate a random realization of the internal wave spectrum
+        %
+        %   Srnd = RANDOMREALIZATION(self) generates a stochastic realization of the
+        %   internal wave energy spectrum based on the model variance field A2.
+        %   The spectrum is constructed by drawing Gaussian random samples at each
+        %   vertical mode and horizontal wavenumber, squaring them, and averaging
+        %   to obtain a chi-square–distributed estimate of the variance.
+        %
+        %   The number of random samples used at each horizontal wavenumber depends
+        %   on the area of each band of total horizontal wavenumber. Larger bands
+        %   contain more (k,l) pairs and therefore represent a larger number of
+        %   individual waves, which is modeled here by drawing more random samples.
+        %
+        % -------------------------------------------------------------------------
+        % INPUT
+        %
+        %   self : InternalGravityWaveSpectrum object containing:
+        %          - j           : vector of vertical mode indices
+        %          - nK          : number of horizontal wavenumbers
+        %          - KRadialLog  : radial wavenumber vector (log-spaced)
+        %          - A2          : variance field [nModes × nK]
+        %          - h           : modal depth or eigendepth vector
+        %
+        % -------------------------------------------------------------------------
+        % OUTPUT
+        %
+        %   Srnd : Random realization of the internal wave energy spectrum
+        %          [nModes × nK]
+        %
+        % -------------------------------------------------------------------------
+        % METHOD
+        %
+        %   For each vertical mode j and horizontal wavenumber k:
+        %     1. Draw n(k) Gaussian random samples with variance A2(j,k)
+        %     2. Square the samples to form chi-square–distributed values
+        %     3. Average the squared values to estimate the variance
+        %
+        %   The resulting variance field is then scaled by eigendepth (h) and
+        %   divided by 2 to obtain the final energy spectrum.
+        %
+        % -------------------------------------------------------------------------
+        % NOTES
+        %
+        %   - The output is stochastic and will vary between calls.
+        %   - Increasing the number of samples n(k) reduces variance but increases
+        %     computational cost.
+        % -------------------------------------------------------------------------
+        % EXAMPLE
+        %
+        %   Srnd = igw.randomRealization();
+        %
+        % -------------------------------------------------------------------------
+        
+            n=round(self.KRadialLog/min(self.KRadialLog))*10;
+            sigma2 = self.A2;
+            
+        %no need for loop    
+            for indj= self.j
+                for indK= 1:self.nK
+                   thisGauss=normrnd(0,sqrt(sigma2(indj,indK)),[1,n(indK)]); 
+                   thisChi2=thisGauss.^2;
+                   Srnd(indj,indK) = mean(thisChi2); 
+            
+                end
+            end
+            Srnd=(Srnd.*self.h)/2;
+        end
 
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
