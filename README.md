@@ -1,143 +1,174 @@
 # InternalGravityWaveSpectrum
 
-`InternalGravityWaveSpectrum` is a MATLAB class for constructing internal gravity wave spectra from ocean stratification profiles using vertical modes and a logarithmically spaced horizontal wavenumber grid.
+`InternalGravityWaveSpectrum` is a MATLAB toolbox for computing non-hydrostatic internal gravity wave vertical modes and assigning wave energy from a prescribed spectrum `S(K,j)`.
 
-![Garrett-Munk power spectrum example](img/PowerSpectrumGM_allStations.png)
+![Internal wave spectrum example](img/PowerSpectrumGM_allStations.png)
 
 ## Overview
 
-This repository provides tools for building and diagnosing spectral models of internal gravity waves in a stratified ocean. Given a buoyancy frequency profile `N2(z)` and an ocean depth, the main class computes vertical modes, modal structure functions, dispersion relations, modal amplitudes, and energy components.
+This repository provides a numerical implementation for constructing internal-wave energy distributions from an ocean stratification profile. Given buoyancy frequency squared `N2(z)`, total depth, latitude, and a spectral function `S(K,j)`, the toolbox computes the vertical modes and the associated horizontal kinetic energy (`HKE`), vertical kinetic energy (`VKE`), and potential energy (`PE`) as functions of horizontal wavenumber, vertical mode, and depth.
 
-The resulting energy fields can be analyzed as horizontal kinetic energy (`HKE`), vertical kinetic energy (`VKE`), potential energy (`PE`), or total energy (`TE`). The code is intended for research workflows where the user wants to compare theoretical internal-wave spectra with model output, observations, or idealized stratification profiles.
+The main class, `InternalGravityWaveSpectrum`, first computes the non-hydrostatic vertical modes `F(z)` and `G(z)`. The vertical-mode calculation is performed through `GLOceanKit`, which uses stretched vertical coordinates and Chebyshev-polynomial quadrature to resolve sharp vertical structure such as pycnoclines and turning-depth behavior. The quadrature points define the effective vertical grid used by the toolbox.
 
-## Features
+After the modes are computed, the class builds energy coefficients for each energy component. A user-prescribed spectrum `S(K,j)` is then normalized and integrated over horizontal-wavenumber bands and vertical modes. Multiplying the band energy by the modal energy coefficients gives `HKE`, `VKE`, and `PE` on the native `(z,K,j)` grid.
 
-- Computes vertical modes with `InternalModesSpectral` and `InternalModesWKBSpectral`.
-- Builds a log-spaced radial horizontal wavenumber grid.
-- Evaluates modal structure functions, dispersion relations, and eigendepths.
-- Supports energy components `HKE`, `VKE`, `PE`, and `TE`.
-- Includes Garrett-Munk, generalized, tidal, near-inertial, and frequency-localized spectra.
-- Provides interpolation and diagnostic tools for vertical profiles, horizontal wavenumber spectra, frequency spectra, and mode spectra.
+## Dependencies
 
-## Requirements
+Core use requires:
 
-- MATLAB, with support for class definitions and argument validation blocks.
-- The `src/` directory from this repository on the MATLAB path.
-- External classes used by the main model:
-  - `InternalModesSpectral`
-  - `InternalModesWKBSpectral`
+- MATLAB.
+- This repository's `src/` directory on the MATLAB path.
+- `GLOceanKit`: <https://github.com/Energy-Pathways-Group/GLOceanKit>
 
-Some examples and tests may also require:
+The examples in `src/Example/example.mlx` also use:
 
-- `matlab.unittest`
-- `WVTransformBoussinesq`
-- `VerticalModeAtlas`
-- Local `.mat` or `.nc` data files used by specific research scripts.
+- `VerticalModeAtlas`: <https://github.com/JeffreyEarly/vertical-mode-atlas>
+
+`VerticalModeAtlas` is only needed to reproduce the example workflow that uses atlas-derived stratification profiles for Ocean Station PAPA and the Agulhas region. It is not required if you provide your own `N2(z)` function handle.
 
 ## Installation
 
-Clone the repository and add the source directory to your MATLAB path:
+Clone this repository, add its source directory to your MATLAB path, and add `GLOceanKit` to your MATLAB path:
 
 ```matlab
 addpath("src")
+addpath(genpath("path/to/GLOceanKit"))
 ```
 
-Also add any external dependency directories that provide `InternalModesSpectral` and `InternalModesWKBSpectral`.
+If you want to run `src/Example/example.mlx`, also add `VerticalModeAtlas` and make the atlas NetCDF file available in the path used by the example.
+
+The local `data/` and `old/` directories are not part of the GitHub repository workflow and are not required for normal use.
 
 ## Quick Start
 
+This minimal example uses an idealized exponential stratification and does not require `VerticalModeAtlas`.
+
 ```matlab
-Lz = 4000;
-N0 = 3 * 2*pi/3600;
-Lgm = 1300;
-N2 = @(z) N0^2 * exp(2*z/Lgm);
+latExp = 33;                % Latitude [degrees]
+LzExp  = 4000;              % Ocean depth [m]
 
-igws = InternalGravityWaveSpectrum(N2, Lz, ...
-    latitude=33, ...
-    nModes=64, ...
-    nK=64);
+L_gm = 1300;                % E-folding scale depth [m]
+N0   = 3 * 2*pi / 3600;     % Surface buoyancy frequency [rad/s]
 
-S = igws.gmSpectrum();
-igws = igws.assignEnergySpectrum(S);
+% Buoyancy frequency squared N^2(z), with z < 0 below the surface
+N2funcExp = @(z) (N0.^2) .* exp(2*z/L_gm);
 
-z = linspace(-Lz, 0, 500);
-TE = igws.verticalVariance('TE', zVector=z);
+nModes = 128;
+nK     = 256;
+
+igwExp = InternalGravityWaveSpectrum( ...
+    N2funcExp, LzExp, ...
+    nModes=nModes, nK=nK, latitude=latExp);
+
+SExp = igwExp.generalSpectrum( ...
+    j_star=3, ...
+    slope_j=1, ...
+    slope_k=1, ...
+    A=1);
+
+igwExp.assignEnergySpectrum(SExp);
+
+zvect = linspace(-LzExp, 0, 1000);
+
+HKE = igwExp.verticalVariance('HKE', 'zVector', zvect);
+VKE = igwExp.verticalVariance('VKE', 'zVector', zvect);
+PE  = igwExp.verticalVariance('PE',  'zVector', zvect);
 
 figure
-plot(TE, z)
-xlabel('Total energy variance')
+plot(HKE*1e4, zvect, VKE*1e4, zvect, PE*1e4, zvect)
+xlabel('Variance [cm^2 s^{-2}]')
 ylabel('Depth [m]')
+legend('HKE', 'VKE', 'PE')
 grid on
 ```
 
-## Main Usage Pattern
+## Example Workflow
 
-1. Define a stratification profile as a function handle, `N2(z)`.
-2. Initialize the model with depth, latitude, and grid resolution.
-3. Choose a built-in spectrum or define a custom function handle `S(k,j)`.
-4. Assign the spectrum with `assignEnergySpectrum`.
-5. Evaluate diagnostics such as vertical variance, horizontal wavenumber spectra, frequency spectra, or energy by vertical mode.
+The live script `src/Example/example.mlx` demonstrates the workflow used for comparing three stratification profiles:
 
-## Available Spectra
+- idealized exponential stratification,
+- Ocean Station PAPA, using `N2(z)` from `VerticalModeAtlas`,
+- Agulhas region, using `N2(z)` from `VerticalModeAtlas`.
 
-The class includes these spectrum constructors:
+The example initializes one `InternalGravityWaveSpectrum` object per stratification, applies the same generalized spectrum to each case, assigns energy to the model, and compares how stratification changes the resulting energy distributions.
 
-- `gmSpectrum`: Garrett-Munk type spectrum normalized to the GM energy level.
-- `generalSpectrum`: tunable spectrum with mode and wavenumber slopes.
-- `frequencyLocalizedSpectrum`: Lorentzian spectrum localized around a target frequency and vertical mode.
-- `tidalSpectrum`: M2 tidal wrapper around `frequencyLocalizedSpectrum`.
-- `fSpectrum`: near-inertial wrapper centered at the Coriolis frequency.
-- `fM2Spectrum`: wrapper centered at `f0 + omega_M2`.
-- `randomRealization`: stochastic realization based on the assigned variance field.
-
-You can inspect the available named spectrum constructors from MATLAB:
+The main diagnostics used in the example are:
 
 ```matlab
-igws.listAvailableSpectra();
+verticalVariance('HKE', 'zVector', zvect)
+verticalVariance('VKE', 'zVector', zvect)
+verticalVariance('PE',  'zVector', zvect)
+
+energyAtHorizontalWavenumber(z, 'HKE')
+energyAtHorizontalWavenumber(z, 'VKE')
+energyAtHorizontalWavenumber(z, 'PE')
+
+energyAtFrequencies(z, 'HKE', omegaVector=omegaVector)
+energyAtFrequencies(z, 'VKE', omegaVector=omegaVector)
+energyAtFrequencies(z, 'PE',  omegaVector=omegaVector)
 ```
 
-## Coordinate and Energy Conventions
+Rendered figures from this workflow are included in `img/`.
+
+## Spectral Functions
+
+The toolbox assigns energy using a spectrum function handle `S(K,j)`. The default workflow uses `generalSpectrum`, which provides tunable slopes in horizontal wavenumber and vertical mode:
+
+```matlab
+S = igw.generalSpectrum(j_star=3, slope_j=1, slope_k=1, A=1);
+igw.assignEnergySpectrum(S);
+```
+
+You can also provide a custom spectrum function handle, for example from a region-specific characterization of the internal-wave field. The spectrum is normalized and integrated over the model's wavenumber bands before energy is assigned to each `(K,j)` bin.
+
+Available spectrum tools include:
+
+- `generalSpectrum`: tunable spectrum with vertical-mode and horizontal-wavenumber slopes.
+- `gmSpectrum`: Garrett-Munk type internal-wave spectrum.
+- `frequencyLocalizedSpectrum`: spectrum localized around a target frequency and vertical mode.
+- `tidalSpectrum`: M2 tidal wrapper around `frequencyLocalizedSpectrum`.
+- `fSpectrum`: near-inertial wrapper centered at the Coriolis frequency `f0`.
+- `fM2Spectrum`: wrapper centered at `f0 + omega_M2`.
+
+You can list the named spectrum constructors from MATLAB:
+
+```matlab
+igw.listAvailableSpectra();
+```
+
+## Random Realizations
+
+The deterministic spectrum gives the expected total energy in each `(K,j)` band. The method `randomRealization` produces a stochastic realization by treating the internal-wave field as an ensemble of independent linear waves with zero-mean Gaussian amplitudes.
+
+Each band energy is distributed among the independent waves in that band. The summed squared amplitude then follows a chi-squared statistic, so the random realization preserves the expected band energy while allowing finite-sample variability.
+
+## Coordinate Conventions and Limitations
 
 - Depth is negative below the surface: `z < 0`, with `z = 0` at the surface.
-- Latitude should be away from the equator; the model rejects latitudes within about 5 degrees of the equator.
+- Latitude must be away from the equator; the constructor rejects latitudes within about 5 degrees of the equator.
 - Very high latitudes are also rejected by the constructor.
-- Frequencies satisfy approximately `f0 < omega < sqrt(N2max)`.
 - Horizontal wavenumber `K` is radial and log-spaced.
-- Energy terms are requested with `'TE'`, `'HKE'`, `'VKE'`, or `'PE'`.
+- Frequencies satisfy approximately `f0 < omega < sqrt(N2max)`.
+- Energy components are requested with `'HKE'`, `'VKE'`, `'PE'`, or `'TE'`.
+- Some diagnostics currently assume scalar vertical-position queries.
 
-## Examples
+## Examples and Figures
 
-Live-script examples are available in:
+Examples are available in:
 
 - `src/Example/example.mlx`
 - `src/Example/QuadraturePoints.mlx`
 
-Additional rendered figures are available in `img/`, including quadrature-point diagnostics, radius-of-deformation diagnostics, and frequency/power spectrum examples.
+Figures in `img/` show example outputs, including vertical-structure comparisons, horizontal-wavenumber spectra, frequency spectra, radius-of-deformation diagnostics, and quadrature-point diagnostics.
 
-## Testing
+## Testing Status
 
-Tests are located in `src/unitTest/`. A basic test suite can be run with:
-
-```matlab
-addpath("src")
-result = run(matlab.unittest.TestSuite.fromClass(?TestIGWSInitialization));
-table(result)
-```
-
-Some tests rely on external packages, local atlas files, or model-output data paths. If a test fails because a data file or external class is missing, first check whether the relevant dependency is available on your MATLAB path.
-
-## Known Limitations
-
-- The model is not valid near the equator.
-- Some tests and examples currently depend on local research data paths.
-- Some diagnostics currently assume scalar vertical-position queries.
-- Large `.mat` and `.nc` files can make the repository heavy if committed directly to Git.
+The files in `src/unitTest/` are currently outdated and should not be treated as the recommended user-facing validation workflow. They are kept as development history and may need updates before being used as a reliable test suite.
 
 ## References
 
-Please cite the relevant internal-wave, vertical-mode, and Garrett-Munk spectrum literature used in your analysis. The class documentation also refers to Jeffrey et al. 2021 for the squared linear wave-equation energy coefficients.
+For the numerical vertical-mode calculation, see Early (2020). For the internal-wave spectrum and energy-coefficient formulation, cite the relevant internal-wave, Garrett-Munk, and Jeffrey et al. (2021) references used in your analysis.
 
 ## Author
 
 Developed by Leticia Fabre de Lima for research on internal gravity wave spectra.
-
