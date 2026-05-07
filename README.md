@@ -2,7 +2,7 @@
 
 `InternalGravityWaveSpectrum` is a MATLAB toolbox for computing non-hydrostatic ocean internal gravity wave vertical modes and assigning wave energy from a prescribed spectrum `S(K,j)`.
 
-![Internal wave spectrum example](img/PowerSpectrumGM_allStations.png)
+![Internal wave spectrum example](img/FrequencySpectrum_allStations_noBinning.png)
 
 ## Overview
 
