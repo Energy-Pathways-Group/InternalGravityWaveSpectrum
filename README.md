@@ -165,8 +165,8 @@ The files in `src/unitTest/` are currently outdated and should not be treated as
 
 ## References
 
-For the numerical vertical-mode calculation, see Early (2020). For the internal-wave spectrum and energy-coefficient formulation, cite the relevant internal-wave, Garrett-Munk, and Jeffrey et al. (2021) references used in your analysis.
+For the numerical vertical-mode calculation, see Early (2020) and Jeffrey et al. (2021).
 
 ## Author
 
-Developed by Leticia Fabre de Lima for research on internal gravity wave spectra.
+Developed by Leticia Fabre-Lima, Jeffrey Early and Miles Sundermeyer for research on internal gravity wave spectra.
