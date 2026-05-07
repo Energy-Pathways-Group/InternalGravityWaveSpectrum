@@ -2,8 +2,6 @@
 
 `InternalGravityWaveSpectrum` is a MATLAB toolbox for computing non-hydrostatic ocean internal gravity wave vertical modes and assigning wave energy from a prescribed spectrum `S(K,j)`.
 
-![Internal wave spectrum example](img/FrequencySpectrum_allStations_noBinning.png)
-
 ## Overview
 
 This repository provides a numerical implementation for constructing internal-wave spectral model. Given buoyancy frequency squared `N2(z)`, total depth, latitude, and a spectral function `S(K,j)`, the toolbox computes the vertical modes and the associated horizontal kinetic energy (`HKE`), vertical kinetic energy (`VKE`), and potential energy (`PE`) as functions of horizontal wavenumber, vertical mode, and depth.
